@@ -1,6 +1,6 @@
 # Android build notes
 
-Corum Integration v0.2.35 keeps End Screen capture inside the Geometry Dash
+Corum Integration v0.2.36 keeps End Screen capture inside the Geometry Dash
 Cocos renderer. It does not use Android `MediaProjection`.
 
 ## Local Geode CLI build
@@ -37,3 +37,6 @@ action to produce one package containing the platform binaries.
    later re-clear does not create another capture for the same evidence generation.
 9. Repeat with a primary/alternate-map pair and confirm both share one canonical
    pending evidence slot.
+10. Clear a Corum map, wait for the End Screen capture to finish, restart the
+    game, then submit and confirm the staged PNG is uploaded and linked to the
+    record.

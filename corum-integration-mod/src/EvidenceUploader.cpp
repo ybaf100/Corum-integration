@@ -14,6 +14,7 @@
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -86,6 +87,30 @@ std::filesystem::path pendingImagePath(
     return pendingDirectory() / filename;
 }
 
+std::string stagedKey(
+    int accountID,
+    int canonicalLevelID,
+    char const* field
+) {
+    return fmt::format(
+        "{}.staged-{}",
+        evidenceScopePrefix(accountID, canonicalLevelID),
+        field
+    );
+}
+
+std::filesystem::path stagedImagePath(
+    int accountID,
+    int canonicalLevelID
+) {
+    auto const filename = Mod::get()->getSavedValue<std::string>(
+        stagedKey(accountID, canonicalLevelID, "file"),
+        ""
+    );
+    if (filename.empty()) return {};
+    return pendingDirectory() / filename;
+}
+
 bool evidenceCompleteForScope(int accountID, int canonicalLevelID) {
     if (accountID <= 0 || canonicalLevelID <= 0) return false;
     auto const complete = Mod::get()->getSavedValue<bool>(
@@ -142,6 +167,125 @@ std::vector<std::string> deserializeLoadedMods(std::string const& value) {
     return result;
 }
 
+bool persistStagedCapture(PendingEvidence const& pending) {
+    if (
+        pending.accountID <= 0 ||
+        pending.canonicalLevelID <= 0 ||
+        pending.imagePath.empty()
+    ) return false;
+
+    auto const accountID = pending.accountID;
+    auto const canonicalLevelID = pending.canonicalLevelID;
+    Mod::get()->setSavedValue(
+        stagedKey(accountID, canonicalLevelID, "file"),
+        pending.imagePath.filename().string()
+    );
+    Mod::get()->setSavedValue(
+        stagedKey(accountID, canonicalLevelID, "source"),
+        pending.levelID
+    );
+    Mod::get()->setSavedValue(
+        stagedKey(accountID, canonicalLevelID, "width"),
+        pending.width
+    );
+    Mod::get()->setSavedValue(
+        stagedKey(accountID, canonicalLevelID, "height"),
+        pending.height
+    );
+    Mod::get()->setSavedValue(
+        stagedKey(accountID, canonicalLevelID, "username"),
+        pending.username
+    );
+    Mod::get()->setSavedValue(
+        stagedKey(accountID, canonicalLevelID, "captured-at"),
+        pending.capturedAtMs
+    );
+    Mod::get()->setSavedValue(
+        stagedKey(accountID, canonicalLevelID, "platform"),
+        pending.platform
+    );
+    Mod::get()->setSavedValue(
+        stagedKey(accountID, canonicalLevelID, "mod-version"),
+        pending.modVersion
+    );
+    Mod::get()->setSavedValue(
+        stagedKey(accountID, canonicalLevelID, "game-version"),
+        pending.gameVersion
+    );
+    Mod::get()->setSavedValue(
+        stagedKey(accountID, canonicalLevelID, "geode-version"),
+        pending.geodeVersion
+    );
+    Mod::get()->setSavedValue(
+        stagedKey(accountID, canonicalLevelID, "loaded-mods"),
+        serializeLoadedMods(pending.loadedMods)
+    );
+    Mod::get()->setSavedValue(
+        stagedKey(accountID, canonicalLevelID, "metadata-version"),
+        1
+    );
+    return flushEvidenceState();
+}
+
+void clearMatchingStagedCapture(PendingEvidence const& pending) {
+    auto const accountID = pending.accountID;
+    auto const canonicalLevelID = pending.canonicalLevelID;
+    auto const stagedCapturedAt = Mod::get()->getSavedValue<double>(
+        stagedKey(accountID, canonicalLevelID, "captured-at"),
+        0.0
+    );
+    if (stagedCapturedAt != pending.capturedAtMs) return;
+
+    Mod::get()->setSavedValue(
+        stagedKey(accountID, canonicalLevelID, "file"),
+        std::string()
+    );
+    Mod::get()->setSavedValue(
+        stagedKey(accountID, canonicalLevelID, "source"),
+        0
+    );
+    Mod::get()->setSavedValue(
+        stagedKey(accountID, canonicalLevelID, "width"),
+        0
+    );
+    Mod::get()->setSavedValue(
+        stagedKey(accountID, canonicalLevelID, "height"),
+        0
+    );
+    Mod::get()->setSavedValue(
+        stagedKey(accountID, canonicalLevelID, "username"),
+        std::string()
+    );
+    Mod::get()->setSavedValue(
+        stagedKey(accountID, canonicalLevelID, "captured-at"),
+        0.0
+    );
+    Mod::get()->setSavedValue(
+        stagedKey(accountID, canonicalLevelID, "platform"),
+        std::string()
+    );
+    Mod::get()->setSavedValue(
+        stagedKey(accountID, canonicalLevelID, "mod-version"),
+        std::string()
+    );
+    Mod::get()->setSavedValue(
+        stagedKey(accountID, canonicalLevelID, "game-version"),
+        std::string()
+    );
+    Mod::get()->setSavedValue(
+        stagedKey(accountID, canonicalLevelID, "geode-version"),
+        std::string()
+    );
+    Mod::get()->setSavedValue(
+        stagedKey(accountID, canonicalLevelID, "loaded-mods"),
+        std::string()
+    );
+    Mod::get()->setSavedValue(
+        stagedKey(accountID, canonicalLevelID, "metadata-version"),
+        0
+    );
+}
+
 std::string base64Encode(std::vector<std::uint8_t> const& input) {
     static constexpr char alphabet[] =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -191,6 +335,160 @@ bool isPNG(std::vector<std::uint8_t> const& bytes) {
         if (bytes[index] != signature[index]) return false;
     }
     return true;
+}
+
+bool isCompletePNGFile(std::filesystem::path const& path) {
+    std::ifstream stream(path, std::ios::binary);
+    if (!stream) return false;
+
+    std::uint8_t signature[8] {};
+    stream.read(
+        reinterpret_cast<char*>(signature),
+        static_cast<std::streamsize>(sizeof(signature))
+    );
+    if (stream.gcount() != static_cast<std::streamsize>(sizeof(signature))) {
+        return false;
+    }
+    static constexpr std::uint8_t expectedSignature[] {
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    };
+    for (std::size_t index = 0; index < sizeof(expectedSignature); ++index) {
+        if (signature[index] != expectedSignature[index]) return false;
+    }
+
+    stream.clear();
+    stream.seekg(0, std::ios::end);
+    auto const length = stream.tellg();
+    if (
+        length == std::streampos(-1) ||
+        static_cast<std::streamoff>(length) < static_cast<std::streamoff>(20)
+    ) return false;
+    stream.seekg(-12, std::ios::end);
+
+    std::uint8_t endChunk[12] {};
+    stream.read(
+        reinterpret_cast<char*>(endChunk),
+        static_cast<std::streamsize>(sizeof(endChunk))
+    );
+    if (stream.gcount() != static_cast<std::streamsize>(sizeof(endChunk))) {
+        return false;
+    }
+    return
+        endChunk[0] == 0 && endChunk[1] == 0 &&
+        endChunk[2] == 0 && endChunk[3] == 0 &&
+        endChunk[4] == 'I' && endChunk[5] == 'E' &&
+        endChunk[6] == 'N' && endChunk[7] == 'D';
+}
+
+std::optional<PendingEvidence> loadStagedCapture(
+    int accountID,
+    int canonicalLevelID
+) {
+    auto const imagePath = stagedImagePath(accountID, canonicalLevelID);
+    if (imagePath.empty() || !isCompletePNGFile(imagePath)) {
+        return std::nullopt;
+    }
+
+    PendingEvidence pending;
+    pending.levelID = Mod::get()->getSavedValue<int>(
+        stagedKey(accountID, canonicalLevelID, "source"),
+        canonicalLevelID
+    );
+    if (pending.levelID <= 0) pending.levelID = canonicalLevelID;
+    pending.canonicalLevelID = canonicalLevelID;
+    pending.accountID = accountID;
+    pending.width = Mod::get()->getSavedValue<int>(
+        stagedKey(accountID, canonicalLevelID, "width"),
+        0
+    );
+    pending.height = Mod::get()->getSavedValue<int>(
+        stagedKey(accountID, canonicalLevelID, "height"),
+        0
+    );
+    pending.capturedAtMs = Mod::get()->getSavedValue<double>(
+        stagedKey(accountID, canonicalLevelID, "captured-at"),
+        0.0
+    );
+    pending.username = Mod::get()->getSavedValue<std::string>(
+        stagedKey(accountID, canonicalLevelID, "username"),
+        ""
+    );
+    pending.platform = Mod::get()->getSavedValue<std::string>(
+        stagedKey(accountID, canonicalLevelID, "platform"),
+        ""
+    );
+    pending.modVersion = Mod::get()->getSavedValue<std::string>(
+        stagedKey(accountID, canonicalLevelID, "mod-version"),
+        ""
+    );
+    pending.gameVersion = Mod::get()->getSavedValue<std::string>(
+        stagedKey(accountID, canonicalLevelID, "game-version"),
+        ""
+    );
+    pending.geodeVersion = Mod::get()->getSavedValue<std::string>(
+        stagedKey(accountID, canonicalLevelID, "geode-version"),
+        ""
+    );
+    pending.loadedMods = deserializeLoadedMods(
+        Mod::get()->getSavedValue<std::string>(
+            stagedKey(accountID, canonicalLevelID, "loaded-mods"),
+            ""
+        )
+    );
+    pending.imagePath = imagePath;
+    return pending;
+}
+
+std::optional<std::pair<std::filesystem::path, double>> findRecoverableOrphan(
+    int accountID,
+    int canonicalLevelID
+) {
+    auto const directory = pendingDirectory();
+    std::error_code error;
+    if (!std::filesystem::exists(directory, error) || error) {
+        return std::nullopt;
+    }
+
+    auto const prefix = fmt::format(
+        "clear-{}-{}-",
+        accountID,
+        canonicalLevelID
+    );
+    std::optional<std::pair<std::filesystem::path, double>> newest;
+
+    for (
+        std::filesystem::directory_iterator it(directory, error), end;
+        it != end && !error;
+        it.increment(error)
+    ) {
+        std::error_code entryError;
+        if (!it->is_regular_file(entryError) || entryError) continue;
+
+        auto const path = it->path();
+        if (path.extension() != ".png") continue;
+        auto const stem = path.stem().string();
+        if (!stem.starts_with(prefix) || stem.size() <= prefix.size()) continue;
+
+        auto const timestampText = stem.substr(prefix.size());
+        std::size_t parsedLength = 0;
+        double capturedAtMs = 0.0;
+        try {
+            capturedAtMs = static_cast<double>(std::stoll(
+                timestampText,
+                &parsedLength
+            ));
+        } catch (...) {
+            continue;
+        }
+        if (parsedLength != timestampText.size()) continue;
+        if (!isCompletePNGFile(path)) continue;
+
+        if (!newest || capturedAtMs > newest->second) {
+            newest = std::make_pair(path, capturedAtMs);
+        }
+    }
+
+    return newest;
 }
 
 void finishEvidenceUpload(
@@ -347,6 +645,8 @@ void storePendingCapture(PendingEvidence const& pending) {
         // PNG encoding is done off the game thread. If two clears of the same
         // map finish encoding out of order, never let the older capture replace
         // the newer one.
+        clearMatchingStagedCapture(pending);
+        flushEvidenceState();
         std::error_code error;
         std::filesystem::remove(pending.imagePath, error);
         return;
@@ -416,6 +716,11 @@ void storePendingCapture(PendingEvidence const& pending) {
         std::string()
     );
 
+    // If this PNG was staged before asynchronous encoding, promote it to the
+    // active pending slot and clear only the matching staging generation in the
+    // same persisted save operation.
+    clearMatchingStagedCapture(pending);
+
     auto const persisted = flushEvidenceState();
     if (persisted && !oldPath.empty() && oldPath != pending.imagePath) {
         std::error_code error;
@@ -428,6 +733,94 @@ void storePendingCapture(PendingEvidence const& pending) {
             );
         }
     }
+}
+
+bool hasRecoverablePendingCapture(
+    int accountID,
+    int canonicalLevelID
+) {
+    auto const activePath = pendingImagePath(accountID, canonicalLevelID);
+    if (!activePath.empty() && isCompletePNGFile(activePath)) return true;
+    if (loadStagedCapture(accountID, canonicalLevelID)) return true;
+    return findRecoverableOrphan(accountID, canonicalLevelID).has_value();
+}
+
+std::filesystem::path recoverPendingCapture(
+    int accountID,
+    int canonicalLevelID,
+    int fallbackSourceLevelID
+) {
+    auto activePath = pendingImagePath(accountID, canonicalLevelID);
+    auto activeCapturedAt = Mod::get()->getSavedValue<double>(
+        scopedKey(accountID, canonicalLevelID, "captured-at"),
+        0.0
+    );
+    auto activeValid = !activePath.empty() && isCompletePNGFile(activePath);
+
+    if (auto staged = loadStagedCapture(accountID, canonicalLevelID)) {
+        if (staged->levelID <= 0) staged->levelID = fallbackSourceLevelID;
+        if (!activeValid || staged->capturedAtMs >= activeCapturedAt) {
+            storePendingCapture(*staged);
+            activePath = pendingImagePath(accountID, canonicalLevelID);
+            activeCapturedAt = staged->capturedAtMs;
+            activeValid = !activePath.empty() && isCompletePNGFile(activePath);
+            log::info(
+                "Recovered staged Corum End Screen capture after restart for account {} / map {}",
+                accountID,
+                canonicalLevelID
+            );
+        } else {
+            auto const stalePath = staged->imagePath;
+            clearMatchingStagedCapture(*staged);
+            flushEvidenceState();
+            if (!stalePath.empty() && stalePath != activePath) {
+                std::error_code removeError;
+                std::filesystem::remove(stalePath, removeError);
+            }
+        }
+    }
+
+    // v0.2.35 could finish writing a PNG just before process shutdown but lose
+    // the main-thread metadata callback. Recover those complete orphan PNGs by
+    // their account/canonical-map/timestamp filename instead of silently
+    // submitting the record without evidence.
+    if (auto orphan = findRecoverableOrphan(accountID, canonicalLevelID)) {
+        if (!activeValid || orphan->second > activeCapturedAt) {
+            auto account = GJAccountManager::get();
+            auto const username =
+                account && account->m_accountID == accountID
+                    ? std::string(account->m_username)
+                    : std::string();
+            PendingEvidence recovered {
+                .levelID = fallbackSourceLevelID > 0
+                    ? fallbackSourceLevelID
+                    : canonicalLevelID,
+                .canonicalLevelID = canonicalLevelID,
+                .accountID = accountID,
+                .width = 0,
+                .height = 0,
+                .capturedAtMs = orphan->second,
+                .username = username,
+                .platform = "",
+                .modVersion = "",
+                .gameVersion = "",
+                .geodeVersion = "",
+                .loadedMods = {},
+                .imagePath = orphan->first,
+            };
+            storePendingCapture(recovered);
+            activePath = pendingImagePath(accountID, canonicalLevelID);
+            activeCapturedAt = recovered.capturedAtMs;
+            activeValid = !activePath.empty() && isCompletePNGFile(activePath);
+            log::info(
+                "Recovered orphaned v0.2.35 Corum End Screen PNG for account {} / map {}",
+                accountID,
+                canonicalLevelID
+            );
+        }
+    }
+
+    return activeValid ? activePath : std::filesystem::path();
 }
 
 } // namespace
@@ -448,7 +841,7 @@ bool hasPendingEvidenceForSubmission(
 ) {
     if (canonicalLevelID <= 0 || accountID <= 0) return false;
     if (evidenceCompleteForScope(accountID, canonicalLevelID)) return false;
-    return !pendingImagePath(accountID, canonicalLevelID).empty();
+    return hasRecoverablePendingCapture(accountID, canonicalLevelID);
 }
 
 void prepareEvidenceForSubmission(
@@ -487,8 +880,20 @@ void prepareEvidenceForSubmission(
         return;
     }
 
-    auto const imagePath = pendingImagePath(accountID, canonicalLevelID);
+    auto const imagePath = recoverPendingCapture(
+        accountID,
+        canonicalLevelID,
+        sourceLevelID
+    );
     if (imagePath.empty()) {
+        if (!stagedImagePath(accountID, canonicalLevelID).empty()) {
+            callback({
+                .success = false,
+                .error = "The saved End Screen capture was interrupted. Please clear the level again.",
+            });
+            return;
+        }
+
         // v0.2.31 compatibility: reuse an already uploaded evidence ID when one
         // exists. Older trusted records with no evidence remain submittable.
         auto evidenceID = latestEvidenceID(sourceLevelID);
@@ -928,6 +1333,18 @@ class $modify(CorumEndLevelEvidenceLayer, EndLevelLayer) {
             .imagePath = imagePath,
         };
 
+        // Persist the small metadata record before the expensive PNG encoding
+        // starts. If the process exits after the PNG reaches disk but before
+        // the worker's main-thread completion callback, the next session can
+        // promote this staged capture instead of losing it.
+        if (!persistStagedCapture(pending)) {
+            delete image;
+            log::error(
+                "Could not persist staged Corum End Screen metadata before PNG encoding"
+            );
+            return;
+        }
+
         s_captureWrites[evidenceScopePrefix(
             pending.accountID,
             pending.canonicalLevelID
@@ -940,11 +1357,26 @@ class $modify(CorumEndLevelEvidenceLayer, EndLevelLayer) {
             capturedImage = std::unique_ptr<CCImage>(image),
             pending = std::move(pending)
         ]() mutable {
-            auto const saved = capturedImage->saveToFile(
-                pending.imagePath.string().c_str(),
+            auto temporaryPath = pending.imagePath;
+            temporaryPath.replace_extension(".part.png");
+            auto saved = capturedImage->saveToFile(
+                temporaryPath.string().c_str(),
                 false
             );
             capturedImage.reset();
+
+            if (saved) {
+                std::error_code renameError;
+                std::filesystem::rename(
+                    temporaryPath,
+                    pending.imagePath,
+                    renameError
+                );
+                saved = !renameError;
+                if (renameError) {
+                    std::filesystem::remove(temporaryPath, renameError);
+                }
+            }
 
             Loader::get()->queueInMainThread([
                 saved,

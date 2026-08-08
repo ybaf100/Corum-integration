@@ -1,3 +1,12 @@
+# v0.2.36
+
+- Persist End Screen capture metadata before background PNG encoding starts, so a completed local capture survives a game restart even if the post-encode main-thread callback never ran
+- Encode into a temporary PNG and atomically rename it into the pending slot only after lossless PNG writing succeeds
+- Recover a completed staged capture on the next submission after restarting Geometry Dash
+- Recover complete v0.2.35 orphan PNGs whose image reached disk but whose pending metadata was lost during shutdown
+- Refuse to silently submit a new 100% clear without evidence when a staged capture is known to have been interrupted
+- Keep the v0.2.35 native-size render-target fix and background PNG compression behavior
+
 # v0.2.35
 
 - Fix End Screen captures rendering only in the bottom-left with a large black area by passing Cocos logical dimensions to `CCRenderTexture` and letting Cocos apply the content scale exactly once
