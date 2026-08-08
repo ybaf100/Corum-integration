@@ -13,7 +13,10 @@
 #include <fstream>
 #include <functional>
 #include <iterator>
+#include <memory>
 #include <string>
+#include <thread>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -41,6 +44,7 @@ async::TaskHolder<web::WebResponse> s_evidenceRequest;
 PendingEvidence s_pendingEvidence;
 bool s_uploadingEvidence = false;
 corum::EvidencePreparationCallback s_evidenceCallback;
+std::unordered_map<std::string, double> s_captureWrites;
 
 std::string evidenceStorageKey(int levelID) {
     return fmt::format("clear-evidence.{}", levelID);
@@ -335,6 +339,19 @@ void storePendingCapture(PendingEvidence const& pending) {
         pending.imagePath.empty()
     ) return;
 
+    auto const previousCapturedAt = Mod::get()->getSavedValue<double>(
+        scopedKey(accountID, canonicalLevelID, "captured-at"),
+        0.0
+    );
+    if (previousCapturedAt > pending.capturedAtMs) {
+        // PNG encoding is done off the game thread. If two clears of the same
+        // map finish encoding out of order, never let the older capture replace
+        // the newer one.
+        std::error_code error;
+        std::filesystem::remove(pending.imagePath, error);
+        return;
+    }
+
     auto const oldPath = pendingImagePath(accountID, canonicalLevelID);
     auto const prefix = evidenceScopePrefix(accountID, canonicalLevelID);
 
@@ -459,6 +476,14 @@ void prepareEvidenceForSubmission(
 
     if (evidenceCompleteForScope(accountID, canonicalLevelID)) {
         callback({.success = true});
+        return;
+    }
+
+    if (s_captureWrites.contains(evidenceScopePrefix(accountID, canonicalLevelID))) {
+        callback({
+            .success = false,
+            .error = "The End Screen capture is still being saved. Please try again in a moment.",
+        });
         return;
     }
 
@@ -810,18 +835,22 @@ class $modify(CorumEndLevelEvidenceLayer, EndLevelLayer) {
         auto scene = director ? director->getRunningScene() : nullptr;
         if (!director || !scene) return;
 
-        auto const pixelSize = director->getWinSizeInPixels();
-        auto const width = static_cast<int>(pixelSize.width);
-        auto const height = static_cast<int>(pixelSize.height);
-        if (width <= 0 || height <= 0) return;
+        // CCRenderTexture expects Cocos logical points here. Its implementation
+        // multiplies these values by CC_CONTENT_SCALE_FACTOR() internally.
+        // Passing getWinSizeInPixels() caused that scale to be applied twice,
+        // producing a huge black render target with the scene only in the
+        // bottom-left corner.
+        auto const windowSize = director->getWinSize();
+        auto const logicalWidth = static_cast<int>(windowSize.width);
+        auto const logicalHeight = static_cast<int>(windowSize.height);
+        if (logicalWidth <= 0 || logicalHeight <= 0) return;
 
-        auto renderTexture = CCRenderTexture::create(width, height);
+        auto renderTexture = CCRenderTexture::create(logicalWidth, logicalHeight);
         if (!renderTexture) {
             log::error("Could not create Corum end-screen render texture");
             return;
         }
 
-        auto const windowSize = director->getWinSize();
         auto captureLabel = CCLabelBMFont::create(
             fmt::format("{} / {}", username, map->title).c_str(),
             "bigFont.fnt"
@@ -848,6 +877,18 @@ class $modify(CorumEndLevelEvidenceLayer, EndLevelLayer) {
             return;
         }
 
+        auto sprite = renderTexture->getSprite();
+        auto texture = sprite ? sprite->getTexture() : nullptr;
+        auto const pixelSize = texture
+            ? texture->getContentSizeInPixels()
+            : director->getWinSizeInPixels();
+        auto const width = static_cast<int>(pixelSize.width);
+        auto const height = static_cast<int>(pixelSize.height);
+        if (width <= 0 || height <= 0) {
+            delete image;
+            return;
+        }
+
         auto directory = pendingDirectory();
         std::error_code error;
         std::filesystem::create_directories(directory, error);
@@ -862,15 +903,16 @@ class $modify(CorumEndLevelEvidenceLayer, EndLevelLayer) {
             map->levelID,
             static_cast<std::int64_t>(capturedAtMs)
         );
-        auto const saved = !error && image->saveToFile(imagePath.string().c_str(), false);
-        delete image;
-
-        if (!saved) {
-            log::error("Could not write Corum end-screen PNG: {}", imagePath.string());
+        if (error) {
+            delete image;
+            log::error(
+                "Could not create Corum pending-evidence directory: {}",
+                error.message()
+            );
             return;
         }
 
-        storePendingCapture({
+        PendingEvidence pending {
             .levelID = levelID,
             .canonicalLevelID = map->levelID,
             .accountID = account->m_accountID,
@@ -883,12 +925,60 @@ class $modify(CorumEndLevelEvidenceLayer, EndLevelLayer) {
             .gameVersion = GEODE_GD_VERSION_STRING,
             .geodeVersion = Loader::get()->getVersion().toVString(),
             .loadedMods = corum::ApiClient::loadedMods(),
-            .imagePath = std::move(imagePath),
-        });
-        log::info(
-            "Stored Corum end-screen capture locally for account {} / map {}",
-            account->m_accountID,
-            map->levelID
-        );
+            .imagePath = imagePath,
+        };
+
+        s_captureWrites[evidenceScopePrefix(
+            pending.accountID,
+            pending.canonicalLevelID
+        )] = pending.capturedAtMs;
+
+        // GPU readback has to happen on the game thread, but PNG compression
+        // and disk I/O do not. Keeping saveToFile() off the End Screen frame
+        // removes the largest avoidable hitch while preserving lossless PNG.
+        std::thread([
+            capturedImage = std::unique_ptr<CCImage>(image),
+            pending = std::move(pending)
+        ]() mutable {
+            auto const saved = capturedImage->saveToFile(
+                pending.imagePath.string().c_str(),
+                false
+            );
+            capturedImage.reset();
+
+            Loader::get()->queueInMainThread([
+                saved,
+                pending = std::move(pending)
+            ]() mutable {
+                auto const scope = evidenceScopePrefix(
+                    pending.accountID,
+                    pending.canonicalLevelID
+                );
+                auto const write = s_captureWrites.find(scope);
+                if (
+                    write != s_captureWrites.end() &&
+                    write->second == pending.capturedAtMs
+                ) {
+                    s_captureWrites.erase(write);
+                }
+
+                if (!saved) {
+                    log::error(
+                        "Could not write Corum end-screen PNG: {}",
+                        pending.imagePath.string()
+                    );
+                    return;
+                }
+
+                auto const accountID = pending.accountID;
+                auto const canonicalLevelID = pending.canonicalLevelID;
+                storePendingCapture(pending);
+                log::info(
+                    "Stored Corum end-screen capture locally for account {} / map {}",
+                    accountID,
+                    canonicalLevelID
+                );
+            });
+        }).detach();
     }
 };

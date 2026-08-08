@@ -42,5 +42,5 @@ jobs:
         id: build
       - uses: actions/upload-artifact@v7
         with:
-          name: Corum-Integration-v0.2.34
+          name: Corum-Integration-v0.2.35
           path: ${{ steps.build.outputs.build-output }}

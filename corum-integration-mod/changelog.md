@@ -1,3 +1,10 @@
+# v0.2.35
+
+- Fix End Screen captures rendering only in the bottom-left with a large black area by passing Cocos logical dimensions to `CCRenderTexture` and letting Cocos apply the content scale exactly once
+- Preserve the real native render-target pixel dimensions in evidence metadata; no screenshot downsampling or lossy conversion was added
+- Move lossless PNG compression and file I/O off the Geometry Dash render thread to reduce the End Screen capture hitch
+- Prevent asynchronous encodes from letting an older repeated clear overwrite a newer pending capture for the same account and Corum map
+
 # v0.2.34
 
 - Keep End Screen capture on the cross-platform Cocos `CCRenderTexture` path, so Android builds do not require Android `MediaProjection` screen-capture consent

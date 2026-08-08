@@ -117,7 +117,7 @@ PNG로 만들고 Geode의 모드 전용 save directory에 저장한다. 따라�
 Android 시스템 UI를 캡처하는 기능은 아니다.
 
 기존 동봉 바이너리는 Geometry Dash `2.2081`, Geode `5.8.2`를 기준으로 Windows에서
-검증된 v0.2.33 빌드였다. v0.2.34의 Android 바이너리는 Android NDK가 준비된 환경 또는
+검증된 v0.2.33 빌드였다. v0.2.35의 Android 바이너리는 Android NDK가 준비된 환경 또는
 동봉된 CI workflow에서 별도로 빌드·실기기 검증해야 한다.
 
 ## 기록 신뢰도
@@ -136,9 +136,12 @@ pending 캡처에 함께 고정하므로, 다음 게임 실행에서 제출하�
 - v0.2.29부터 CheatAPI와 기존 클라이언트 치트 판정 코드는 사용하지 않는다.
 - Corum에 등록된 맵을 Normal Mode, 비 Test Mode에서 100% 완료해 실제 End Level
   화면이 열린 경우에만 그 화면을 자동 캡처한다.
-- 캡처 크기는 Geometry Dash 창의 실제 픽셀 크기(`getWinSizeInPixels`)를 그대로
-  사용하며 리사이즈·다운샘플링 없이 무손실 PNG로 Geode의 모드 전용 save
-  directory 아래에만 우선 저장한다.
+- 캡처 RenderTexture에는 Cocos 논리 화면 크기를 전달하고 Cocos가 내부에서
+  `contentScaleFactor`를 한 번 적용하게 한다. 따라서 실제 렌더 타깃 픽셀 해상도는
+  그대로 유지하면서 이중 스케일로 생기던 검은 여백을 제거한다. 리사이즈·다운샘플링
+  없이 무손실 PNG로 Geode의 모드 전용 save directory 아래에만 우선 저장한다.
+- GPU 픽셀 readback은 렌더 스레드에서 수행하지만 PNG 압축과 디스크 쓰기는 별도
+  작업으로 넘겨 End Screen 프레임의 불필요한 정지를 줄인다.
 - 클리어 순간에는 서버 요청을 하지 않는다. 같은 계정·같은 대표 Corum 맵을
   제출 전에 여러 번 클리어하면 가장 최근에 정상 저장된 pending PNG 하나만 유지한다.
 - 대표 맵과 대체 맵은 동일한 대표 Corum 맵 키를 공유하므로 어느 쪽을 클리어해도
