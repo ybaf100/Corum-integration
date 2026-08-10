@@ -10,6 +10,12 @@ Geode 기반 Geometry Dash 모드다. `LevelInfoLayer`에서 Corum 맵 정보를
 `C Integration is ready` 알림을 표시한다. 실패하면 원인을 포함한 영어 오류
 알림을 표시한다.
 
+서버가 내려준 플랫폼별 최소 지원 버전보다 현재 모드가 낮으면 준비 완료 알림 대신
+`C Integration is outdated!` 경고창을 표시한다. 이 상태에서도 Corum 맵 정보,
+난이도, 순위와 최대 점수는 정상 표시되지만 종이비행기 버튼과 메인 메뉴 일괄 제출은
+업데이트 경고만 열고 기록을 보내지 않는다. `Update`는 공식 GitHub Releases 페이지를
+연다. 서버도 같은 버전 정책으로 개별·일괄 기록 요청을 거절한다.
+
 시작 동기화가 끝난 뒤에는 같은 게임 세션 동안 레벨 화면에서 데이터를 다시
 받지 않는다. 따라서 맵 선택 중 네트워크 요청으로 인한 지연이나 성능 저하가
 없다. Corum에 등록되지 않은 맵이나 시작 동기화에 실패한 경우에는 정보와
@@ -83,15 +89,12 @@ Geometry Dash의 Geode 모드 설정에서는 다음 기능만 선택한다.
 - 전송이 끝나면 각 맵마다 Geometry Dash 체크 또는 X 아이콘과 결과 메시지가
   표시된다. 일부 맵이 실패해도 나머지 후보의 전송은 계속 진행한다.
 
-## 바로 설치
+## 설치 파일
 
-Windows용 검증 빌드는 프로젝트 루트의 다음 파일에 있다.
-
-```txt
-release/hwanhee1.corum_integration.geode
-```
-
-이 파일을 Geometry Dash의 `geode/mods` 폴더에 넣고 게임을 다시 시작한다. 필수 의존성은 `Node IDs`뿐이다. v0.2.29부터 CheatAPI는 의존성과 실행 코드에서 모두 제거됐다.
+GitHub Actions가 Windows `v1.0.0`과 Android `v0.2.40` 설치 파일을 각각 만든다.
+해당 플랫폼의 `hwanhee1.corum_integration.geode`를 설치하고 게임을 다시 시작한다.
+필수 의존성은 `Node IDs`뿐이다. v0.2.29부터 CheatAPI는 의존성과 실행 코드에서
+모두 제거됐다.
 
 ## 빌드
 
@@ -104,14 +107,20 @@ geode build
 특정 플랫폼을 대상으로 빌드하려면 Geode CLI의 `--platform` 옵션을 사용한다.
 
 ```bash
-geode build --platform win
 geode build --platform android32
 geode build --platform android64
 ```
 
+소스의 기본 메타데이터는 Android `v0.2.40`이다. Windows `v1.0.0` 정식 파일은
+메타데이터와 CMake 버전을 함께 바꾸는 GitHub Actions workflow로 빌드한다. 기본
+소스를 그대로 `--platform win`으로 빌드한 `v0.2.40` Windows 파일은 정식 배포에
+사용하지 않는다.
+
 Android 빌드에는 Geode 공식 문서에 따라 Android NDK와 `ANDROID_NDK_ROOT` 설정이
-필요하다. 저장소 루트의 `.github/workflows/build-mod.yml`은 Windows, Android32,
-Android64를 각각 빌드한 뒤 하나의 `.geode`로 합치도록 구성되어 있다.
+필요하다. 저장소 루트의 `.github/workflows/build-mod.yml`은 Windows `v1.0.0`을
+별도 패키지로 빌드하고 Android32·Android64 `v0.2.40`을 하나의 Android 패키지로
+합치도록 구성되어 있다. 플랫폼별 버전이 다르므로 Windows와 Android 전체를 하나의
+`.geode` 파일로 합치지 않는다.
 
 End Screen 증거는 Android의 `MediaProjection`으로 디스플레이를 캡처하지 않는다.
 Geometry Dash가 이미 그리는 Cocos scene을 `CCRenderTexture`에 다시 렌더링해서

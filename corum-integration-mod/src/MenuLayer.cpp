@@ -80,6 +80,10 @@ class $modify(CorumMenuLayer, MenuLayer) {
     }
 
     void onBatchSubmit(CCObject*) {
+        if (corum::ApiClient::isOutdated()) {
+            corum::ApiClient::showUpdateRequiredWarning();
+            return;
+        }
         corum::showBatchSubmitPopup();
     }
 

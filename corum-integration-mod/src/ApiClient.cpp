@@ -1,4 +1,5 @@
 #include "ApiClient.hpp"
+#include "ClientVersion.hpp"
 
 #include <Geode/loader/Loader.hpp>
 #include <Geode/ui/Notification.hpp>
@@ -20,6 +21,7 @@ std::unordered_set<int> s_notListedCache;
 geode::async::TaskHolder<geode::utils::web::WebResponse> s_manifestRequest;
 geode::async::TaskHolder<geode::utils::web::WebResponse> s_catalogRequest;
 corum::StartupStatus s_startupStatus = corum::StartupStatus::NotStarted;
+corum::CatalogResult::ClientPolicy s_clientPolicy;
 std::vector<std::string> s_loadedMods;
 bool s_loadedModsCaptured = false;
 std::string s_evidenceGeneration;
@@ -29,6 +31,106 @@ constexpr std::string_view kEndpointManifestURL =
     "public/corum-endpoint.json";
 
 std::string s_baseURL;
+
+std::string trim(std::string value);
+
+std::string clientPlatformKey() {
+#if defined(GEODE_IS_WINDOWS)
+    return "windows";
+#elif defined(GEODE_IS_ANDROID)
+    return "android";
+#else
+    return "unsupported";
+#endif
+}
+
+bool validUpdateURL(std::string const& url) {
+    constexpr std::string_view releasePrefix =
+        "https://github.com/ybaf100/Corum-integration/releases";
+    constexpr std::string_view releasePathPrefix =
+        "https://github.com/ybaf100/Corum-integration/releases/";
+    return url == releasePrefix || url.starts_with(releasePathPrefix);
+}
+
+corum::CatalogResult::ClientPolicy parseClientPolicy(
+    matjson::Value const& root
+) {
+    corum::CatalogResult::ClientPolicy policy {
+        .platform = clientPlatformKey(),
+        .currentVersion = Mod::get()->getVersion().toVString(),
+    };
+
+    if (
+        !root.contains("clientPolicy") ||
+        !root["clientPolicy"].isObject()
+    ) {
+        return policy;
+    }
+
+    auto const platformNode = root["clientPolicy"][policy.platform];
+    if (!platformNode.isObject()) return policy;
+
+    policy.minimumSupportedVersion = trim(
+        platformNode["minimumSupportedVersion"].asString().unwrapOr("")
+    );
+    policy.latestVersion = trim(
+        platformNode["latestVersion"].asString().unwrapOr("")
+    );
+    policy.updateURL = trim(
+        platformNode["updateUrl"].asString().unwrapOr("")
+    );
+    if (!validUpdateURL(policy.updateURL)) policy.updateURL.clear();
+
+    policy.enforcementEnabled =
+        platformNode["enforcementEnabled"].asBool().unwrapOr(true);
+
+    auto const current = corum::parseSemanticVersion(policy.currentVersion);
+    auto const minimum =
+        corum::parseSemanticVersion(policy.minimumSupportedVersion);
+    if (!current || !minimum) {
+        log::warn(
+            "Ignoring invalid Corum client version policy for {}: current={}, minimum={}",
+            policy.platform,
+            policy.currentVersion,
+            policy.minimumSupportedVersion
+        );
+        return policy;
+    }
+
+    policy.present = true;
+    policy.supported =
+        !policy.enforcementEnabled ||
+        corum::compareSemanticVersions(*current, *minimum) >= 0;
+    return policy;
+}
+
+void showUpdatePopup(
+    std::string const& title,
+    std::string const& message
+) {
+    auto const updateURL = s_clientPolicy.updateURL;
+    if (updateURL.empty()) {
+        FLAlertLayer::create(
+            title.c_str(),
+            message.c_str(),
+            "Close"
+        )->show();
+        return;
+    }
+
+    createQuickPopup(
+        title,
+        message,
+        "Close",
+        "Update",
+        [updateURL](FLAlertLayer*, bool openUpdate) {
+            if (!openUpdate) return;
+            CCApplication::sharedApplication()->openURL(updateURL.c_str());
+        },
+        true,
+        true
+    );
+}
 
 void captureLoadedMods() {
     if (s_loadedModsCaptured) return;
@@ -176,6 +278,7 @@ void downloadCatalog() {
             s_mapCache.clear();
             s_notListedCache.clear();
             s_evidenceGeneration = catalog.evidenceGeneration;
+            s_clientPolicy = catalog.clientPolicy;
             for (auto const& map : catalog.maps) {
                 s_mapCache[mapCacheKey(map.levelID, 0)] = map;
                 if (map.alternateLevelID > 0) {
@@ -188,11 +291,15 @@ void downloadCatalog() {
                 "Corum startup catalog ready with {} maps",
                 catalog.maps.size()
             );
-            Notification::create(
-                "C Integration is ready",
-                NotificationIcon::Success,
-                3.0f
-            )->show();
+            if (corum::ApiClient::isOutdated()) {
+                corum::ApiClient::showStartupOutdatedWarning();
+            } else {
+                Notification::create(
+                    "C Integration is ready",
+                    NotificationIcon::Success,
+                    3.0f
+                )->show();
+            }
         }
     );
 }
@@ -309,6 +416,62 @@ bool ApiClient::startupReady() {
     return s_startupStatus == StartupStatus::Ready;
 }
 
+bool ApiClient::isOutdated() {
+    return
+        s_clientPolicy.present &&
+        s_clientPolicy.enforcementEnabled &&
+        !s_clientPolicy.supported;
+}
+
+bool ApiClient::submissionAllowed() {
+    return !isOutdated();
+}
+
+std::string ApiClient::minimumSupportedVersion() {
+    return s_clientPolicy.minimumSupportedVersion;
+}
+
+std::string ApiClient::latestVersion() {
+    return s_clientPolicy.latestVersion;
+}
+
+std::string ApiClient::updateURL() {
+    return s_clientPolicy.updateURL;
+}
+
+void ApiClient::showStartupOutdatedWarning() {
+    auto const minimum = minimumSupportedVersion();
+    auto const requirement = minimum.empty()
+        ? std::string("A newer supported version is required.")
+        : fmt::format("Version <cy>{}</c> or newer is required.", minimum);
+    showUpdatePopup(
+        "C Integration is outdated!",
+        fmt::format(
+            "<cr>This version can no longer submit Corum records.</c>\n"
+            "{}\n"
+            "Level information will remain available.",
+            requirement
+        )
+    );
+}
+
+void ApiClient::showUpdateRequiredWarning() {
+    auto const minimum = minimumSupportedVersion();
+    auto const requirement = minimum.empty()
+        ? std::string("Install the latest C Integration release to continue.")
+        : fmt::format(
+            "Install C Integration <cy>{}</c> or newer to continue.",
+            minimum
+        );
+    showUpdatePopup(
+        "Update Required",
+        fmt::format(
+            "<cr>Record submission is unavailable on this version.</c>\n{}",
+            requirement
+        )
+    );
+}
+
 std::optional<MapInfo> ApiClient::startupMap(int levelID) {
     if (!startupReady()) return std::nullopt;
     return cachedMap(levelID, 0);
@@ -346,6 +509,7 @@ CatalogResult ApiClient::parseCatalogResponse(web::WebResponse& response) {
     CatalogResult result {
         .ok = true,
         .evidenceGeneration = root["evidenceGeneration"].asString().unwrapOr(""),
+        .clientPolicy = parseClientPolicy(root),
     };
     for (auto const& value : mapsResult.unwrap()) {
         auto const map = parseMapValue(value);

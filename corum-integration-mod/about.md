@@ -24,6 +24,11 @@ website endpoint manifest and downloads the complete Corum map catalog once.
 `C Integration is ready` appears only after both steps finish. A startup error
 notification appears if either step fails.
 
+If the server marks the installed platform version as unsupported, the mod shows
+`C Integration is outdated!`. Level information remains available, while both
+single-record and batch submission are blocked. The Update button opens the
+official Corum Integration GitHub Releases page.
+
 The startup map snapshot is kept for the rest of the game session, so opening
 level screens does not trigger background refreshes. Opening the paper-plane
 popup is the one exception: it first shows a loading view, then fetches that

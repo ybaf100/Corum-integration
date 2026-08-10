@@ -87,6 +87,9 @@ std::string responseError(matjson::Value const& root) {
     if (code == "MAP_NOT_FOUND") return "This level is no longer listed on Corum.";
     if (code == "BELOW_MINIMUM") return "The record is below the current minimum.";
     if (code == "PLAYER_DISABLED") return "Submission is disabled for this account.";
+    if (code == "CLIENT_OUTDATED") return "C Integration must be updated before submitting.";
+    if (code == "CLIENT_VERSION_REQUIRED") return "The server could not verify this mod version.";
+    if (code == "CLIENT_PLATFORM_UNSUPPORTED") return "Submission is unavailable on this platform.";
     if (code == "INVALID_LEVEL_ID") return "The level ID is invalid.";
     if (code == "INVALID_TOKEN") return "The server rejected the record credentials.";
     if (code == "UNAUTHORIZED") return "This Geometry Dash account is not authorized.";
@@ -160,6 +163,12 @@ protected:
 
         corum::ApiClient::initializeSession();
         if (corum::ApiClient::startupReady()) {
+            if (!corum::ApiClient::submissionAllowed()) {
+                showError(
+                    "C Integration must be updated before records can be submitted."
+                );
+                return true;
+            }
             beginLookup();
         } else if (
             corum::ApiClient::startupStatus() == corum::StartupStatus::Failed
@@ -185,6 +194,12 @@ protected:
             showError(
                 "C Integration did not initialize. Restart the game and check "
                 "the startup error."
+            );
+            return;
+        }
+        if (!corum::ApiClient::submissionAllowed()) {
+            showError(
+                "C Integration must be updated before records can be submitted."
             );
             return;
         }
@@ -620,6 +635,10 @@ protected:
     }
 
     void onSubmitAll(CCObject*) {
+        if (!corum::ApiClient::submissionAllowed()) {
+            corum::ApiClient::showUpdateRequiredWarning();
+            return;
+        }
         if (m_state != ViewState::Review || m_candidates.empty()) return;
         m_successCount = 0;
         m_failureCount = 0;
@@ -694,6 +713,12 @@ protected:
     }
 
     void submitBatch() {
+        if (!corum::ApiClient::submissionAllowed()) {
+            finishBatchWithError(
+                "C Integration must be updated before records can be submitted."
+            );
+            return;
+        }
         auto const now = std::chrono::system_clock::now().time_since_epoch();
         matjson::Value body;
         body["action"] = "batchRecords";
@@ -1081,6 +1106,10 @@ public:
 namespace corum {
 
 void showBatchSubmitPopup() {
+    if (ApiClient::isOutdated()) {
+        ApiClient::showUpdateRequiredWarning();
+        return;
+    }
     if (auto popup = CorumBatchSubmitPopup::create()) {
         popup->show();
     }

@@ -52,6 +52,16 @@ struct CatalogResult {
     bool ok = false;
     std::vector<MapInfo> maps;
     std::string evidenceGeneration;
+    struct ClientPolicy {
+        bool present = false;
+        bool enforcementEnabled = false;
+        bool supported = true;
+        std::string platform;
+        std::string currentVersion;
+        std::string minimumSupportedVersion;
+        std::string latestVersion;
+        std::string updateURL;
+    } clientPolicy;
     std::string message;
 };
 
@@ -68,6 +78,13 @@ public:
     static StartupStatus startupStatus();
     static bool startupFinished();
     static bool startupReady();
+    static bool isOutdated();
+    static bool submissionAllowed();
+    static std::string minimumSupportedVersion();
+    static std::string latestVersion();
+    static std::string updateURL();
+    static void showStartupOutdatedWarning();
+    static void showUpdateRequiredWarning();
     static std::optional<MapInfo> startupMap(int levelID);
     static std::string evidenceGeneration();
     static std::vector<std::string> const& loadedMods();

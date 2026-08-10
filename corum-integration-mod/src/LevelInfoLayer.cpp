@@ -41,6 +41,9 @@ std::string responseError(matjson::Value const& root) {
     if (code == "MAP_NOT_FOUND") return "This level is not listed on Corum.";
     if (code == "BELOW_MINIMUM") return "Your best record is below this level's minimum.";
     if (code == "PLAYER_DISABLED") return "Record submission is disabled for this account.";
+    if (code == "CLIENT_OUTDATED") return "C Integration must be updated before submitting.";
+    if (code == "CLIENT_VERSION_REQUIRED") return "The server could not verify this mod version.";
+    if (code == "CLIENT_PLATFORM_UNSUPPORTED") return "Record submission is unavailable on this platform.";
     if (code == "INVALID_LEVEL_ID") return "The level ID is invalid.";
     if (code == "INVALID_TOKEN") return "The server rejected the record credentials.";
     if (code == "UNAUTHORIZED") return "This Geometry Dash account is not authorized.";
@@ -419,6 +422,10 @@ protected:
     }
 
     void onSubmit(CCObject*) {
+        if (!corum::ApiClient::submissionAllowed()) {
+            corum::ApiClient::showUpdateRequiredWarning();
+            return;
+        }
         if (!m_eligible || m_state != ViewState::Form) return;
 
         auto account = GJAccountManager::get();
@@ -984,6 +991,11 @@ class $modify(CorumLevelInfoLayer, LevelInfoLayer) {
             !m_fields->map ||
             !Mod::get()->getSettingValue<bool>("enable-record-submit")
         ) {
+            return;
+        }
+
+        if (!corum::ApiClient::submissionAllowed()) {
+            corum::ApiClient::showUpdateRequiredWarning();
             return;
         }
 
