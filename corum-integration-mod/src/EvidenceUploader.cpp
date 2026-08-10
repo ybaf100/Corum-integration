@@ -574,11 +574,11 @@ void handleEvidenceResponse(web::WebResponse response) {
 void uploadPNG() {
     std::ifstream stream(s_pendingEvidence.imagePath, std::ios::binary);
     if (!stream) {
-        log::error(
-            "Could not read pending Corum end-screen PNG: {}",
+        log::warn(
+            "Could not read pending Corum end-screen PNG; continuing record submission without local evidence: {}",
             s_pendingEvidence.imagePath.string()
         );
-        finishEvidenceUpload(false);
+        finishEvidenceUpload(true);
         return;
     }
 
@@ -587,8 +587,10 @@ void uploadPNG() {
         std::istreambuf_iterator<char>()
     );
     if (!isPNG(bytes)) {
-        log::error("Corum end-screen capture was not a PNG");
-        finishEvidenceUpload(false);
+        log::warn(
+            "Corum end-screen capture was not a usable PNG; continuing record submission without local evidence"
+        );
+        finishEvidenceUpload(true);
         return;
     }
 
@@ -875,27 +877,22 @@ void prepareEvidenceForSubmission(
     if (s_captureWrites.contains(evidenceScopePrefix(accountID, canonicalLevelID))) {
         callback({
             .success = false,
-            .error = "The End Screen capture is still being saved. Please try again in a moment.",
+            .error = "This record is still being prepared. Please try again in a moment.",
         });
         return;
     }
 
-    auto const imagePath = recoverPendingCapture(
+    auto const configuredImagePath = pendingImagePath(
         accountID,
-        canonicalLevelID,
-        sourceLevelID
+        canonicalLevelID
     );
-    if (imagePath.empty()) {
-        if (!stagedImagePath(accountID, canonicalLevelID).empty()) {
-            callback({
-                .success = false,
-                .error = "The saved End Screen capture was interrupted. Please clear the level again.",
-            });
-            return;
-        }
-
-        // v0.2.31 compatibility: reuse an already uploaded evidence ID when one
-        // exists. Older trusted records with no evidence remain submittable.
+    auto const configuredStagedPath = stagedImagePath(
+        accountID,
+        canonicalLevelID
+    );
+    auto continueWithoutLocalEvidence = [&]() {
+        // Evidence is optional. Reuse a previously uploaded evidence ID when
+        // possible; otherwise let the record request continue without one.
         auto evidenceID = latestEvidenceID(sourceLevelID);
         if (evidenceID.empty() && sourceLevelID != canonicalLevelID) {
             evidenceID = latestEvidenceID(canonicalLevelID);
@@ -904,19 +901,36 @@ void prepareEvidenceForSubmission(
             .success = true,
             .evidenceID = std::move(evidenceID),
         });
+    };
+    auto const imagePath = recoverPendingCapture(
+        accountID,
+        canonicalLevelID,
+        sourceLevelID
+    );
+    if (imagePath.empty()) {
+        if (!configuredStagedPath.empty()) {
+            log::warn(
+                "Corum staged-evidence metadata has no usable PNG; continuing record submission without local evidence: {}",
+                configuredStagedPath.string()
+            );
+        }
+        if (!configuredImagePath.empty()) {
+            log::warn(
+                "Corum pending-evidence metadata has no usable PNG; continuing record submission without local evidence: {}",
+                configuredImagePath.string()
+            );
+        }
+        continueWithoutLocalEvidence();
         return;
     }
 
     std::error_code existsError;
     if (!std::filesystem::exists(imagePath, existsError) || existsError) {
-        log::error(
-            "Pending Corum evidence metadata points to a missing file: {}",
+        log::warn(
+            "Pending Corum evidence disappeared before upload; continuing record submission without local evidence: {}",
             imagePath.string()
         );
-        callback({
-            .success = false,
-            .error = "Could not prepare this record for upload. Please clear the level again.",
-        });
+        continueWithoutLocalEvidence();
         return;
     }
 
@@ -1211,16 +1225,45 @@ class $modify(CorumEndLevelEvidenceLayer, EndLevelLayer) {
         auto account = GJAccountManager::get();
         auto const username = account ? std::string(account->m_username) : "";
         if (!account || account->m_accountID <= 0 || username.empty()) return;
-        if (evidenceCompleteForScope(account->m_accountID, map->levelID)) return;
+        if (evidenceCompleteForScope(account->m_accountID, map->levelID)) {
+            log::info(
+                "Skipped Corum End Screen capture because evidence is already complete for account {} / map {}",
+                account->m_accountID,
+                map->levelID
+            );
+            return;
+        }
 
         m_fields->captureScheduled = true;
+        log::info(
+            "Scheduled Corum End Screen capture for account {} / map {}",
+            account->m_accountID,
+            map->levelID
+        );
         scheduleOnce(
             schedule_selector(CorumEndLevelEvidenceLayer::captureEndScreen),
             0.80f
         );
     }
 
+    void onReplay(CCObject* sender) {
+        // Replay can reuse this EndLevelLayer. Cancel a capture that has not
+        // fired yet and release the per-layer guard so the next completion can
+        // schedule its own fully-settled End Screen frame.
+        unschedule(
+            schedule_selector(CorumEndLevelEvidenceLayer::captureEndScreen)
+        );
+        m_fields->captureScheduled = false;
+        EndLevelLayer::onReplay(sender);
+    }
+
     void captureEndScreen(float) {
+        // EndLevelLayer can be reused when Replay is pressed. Release the
+        // one-shot scheduling guard as soon as this callback starts so the next
+        // completed attempt can schedule a fresh capture, even if the previous
+        // PNG was moved or deleted outside the mod.
+        m_fields->captureScheduled = false;
+
         if (!m_playLayer || !m_playLayer->m_level) return;
 
         auto const levelID = static_cast<int>(m_playLayer->m_level->m_levelID);
@@ -1234,7 +1277,14 @@ class $modify(CorumEndLevelEvidenceLayer, EndLevelLayer) {
             account->m_accountID <= 0 ||
             username.empty()
         ) return;
-        if (evidenceCompleteForScope(account->m_accountID, map->levelID)) return;
+        if (evidenceCompleteForScope(account->m_accountID, map->levelID)) {
+            log::info(
+                "Cancelled scheduled Corum End Screen capture because evidence became complete for account {} / map {}",
+                account->m_accountID,
+                map->levelID
+            );
+            return;
+        }
 
         auto director = CCDirector::sharedDirector();
         auto scene = director ? director->getRunningScene() : nullptr;

@@ -1,6 +1,6 @@
-# v0.2.37 release build
+# v0.2.40 release build
 
-An older compiled binary is intentionally not included in this v0.2.37 source
+An older compiled binary is intentionally not included in this v0.2.40 source
 deliverable because it does not contain the evidence-linking, delayed-capture,
 or multi-map pending-capture fixes from this version.
 

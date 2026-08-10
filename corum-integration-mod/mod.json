@@ -8,7 +8,7 @@
   },
   "id": "hwanhee1.corum_integration",
   "name": "Corum Integration",
-  "version": "v0.2.37",
+  "version": "v0.2.40",
   "developer": "hwanhee1",
   "description": "Displays Corum map data, previews record points, and submits records with locally staged clear verification data and a startup snapshot of loaded mods.",
   "dependencies": {

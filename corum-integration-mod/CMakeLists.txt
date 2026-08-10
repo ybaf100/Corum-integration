@@ -12,7 +12,7 @@ if (APPLE)
     endif()
 endif()
 
-project(CorumIntegration VERSION 0.2.37)
+project(CorumIntegration VERSION 0.2.40)
 
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS src/*.cpp)
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
