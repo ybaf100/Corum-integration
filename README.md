@@ -1,4 +1,4 @@
-"# Corum-integration" 
-"# Corum-integration" 
-"# Corum-integration" 
-"# Corum-integration" 
+# Corum Integration
+
+## Node IDs 모드를 필요로 합니다
+- 모드를 적용하고 첫 게임 실행시, 오류가 뜬다면 이 모드가 설치되지 않은 것일 확률이 매우 매우 높습니다!!
