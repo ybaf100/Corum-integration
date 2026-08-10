@@ -119,7 +119,7 @@ void showUpdatePopup(
     }
 
     createQuickPopup(
-        title,
+        title.c_str(),
         message,
         "Close",
         "Update",
