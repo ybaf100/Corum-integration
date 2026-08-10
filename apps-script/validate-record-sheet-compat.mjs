@@ -389,6 +389,12 @@ assert.ok(spreadsheet.getSheetByName("ClearEvidence"));
 assert.ok(recordsSheet.rows[0].includes("엔드스크린 증거 ID"));
 assert.ok(recordsSheet.rows[0].includes("엔드스크린 파일 URL"));
 assert.ok(recordsSheet.rows[0].includes("사용 모드 목록"));
+assert.ok(
+  spreadsheet.getSheetByName("CorumPublicClears").rows[0].includes("엔드스크린 증거 ID"),
+);
+assert.ok(
+  spreadsheet.getSheetByName("CorumPublicClears").rows[0].includes("엔드스크린 파일 URL"),
+);
 assert.equal(
   spreadsheet.getSheetByName("CorumPublicClears").rows[0].includes("사용 모드 목록"),
   false,
@@ -747,7 +753,7 @@ const batchPayload = JSON.parse(
   }).text,
 );
 
-assert.equal(context.CORUM_API_VERSION, "2.21");
+assert.equal(context.CORUM_API_VERSION, "2.22");
 assert.equal(batchPayload.ok, true);
 assert.equal(batchPayload.batch, true);
 assert.equal(batchPayload.requested, 3);
@@ -833,11 +839,41 @@ assert.equal(
 );
 const linkedEvidenceIdColumn = recordsSheet.rows[0].indexOf("엔드스크린 증거 ID");
 const linkedEvidenceUrlColumn = recordsSheet.rows[0].indexOf("엔드스크린 파일 URL");
+const recordProofColumn = recordsSheet.rows[0].indexOf("증거");
 assert.equal(
   normalBatchRow[linkedEvidenceIdColumn],
   evidencePayload.evidence.id,
 );
 assert.match(String(normalBatchRow[linkedEvidenceUrlColumn]), /^https:\/\/drive\.google\.com\//);
+assert.equal(normalBatchRow[recordProofColumn], normalBatchRow[linkedEvidenceUrlColumn]);
+
+const publicSheet = spreadsheet.getSheetByName("CorumPublicClears");
+const publicRecordIdColumn = publicSheet.rows[0].indexOf("레코드 ID");
+const publicEvidenceIdColumn = publicSheet.rows[0].indexOf("엔드스크린 증거 ID");
+const publicEvidenceUrlColumn = publicSheet.rows[0].indexOf("엔드스크린 파일 URL");
+const publicProofColumn = publicSheet.rows[0].indexOf("증거");
+let normalPublicRow = publicSheet.rows.find(
+  (row) => String(row[publicRecordIdColumn]) === String(evidencePayload.evidence.linkedRecordId),
+);
+assert.equal(normalPublicRow[publicEvidenceIdColumn], evidencePayload.evidence.id);
+assert.equal(normalPublicRow[publicProofColumn], normalPublicRow[publicEvidenceUrlColumn]);
+
+// Regression: older API versions could leave the PNG only in ClearEvidence.
+// setupCorumIntegration() must repair both private and public record rows.
+normalBatchRow[linkedEvidenceIdColumn] = "";
+normalBatchRow[linkedEvidenceUrlColumn] = "";
+normalBatchRow[recordProofColumn] = "";
+normalPublicRow[publicEvidenceIdColumn] = "";
+normalPublicRow[publicEvidenceUrlColumn] = "";
+normalPublicRow[publicProofColumn] = "";
+context.setupCorumIntegration();
+assert.equal(normalBatchRow[linkedEvidenceIdColumn], evidencePayload.evidence.id);
+assert.match(String(normalBatchRow[linkedEvidenceUrlColumn]), /^https:\/\/drive\.google\.com\//);
+normalPublicRow = publicSheet.rows.find(
+  (row) => String(row[publicRecordIdColumn]) === String(evidencePayload.evidence.linkedRecordId),
+);
+assert.equal(normalPublicRow[publicEvidenceIdColumn], evidencePayload.evidence.id);
+assert.equal(normalPublicRow[publicProofColumn], normalPublicRow[publicEvidenceUrlColumn]);
 
 // Clean-reset smoke test: keep only the maps sheet, then rebuild integration tabs.
 spreadsheet.sheets = [new MockSheet("sheet1", mapsSheet.rows)];

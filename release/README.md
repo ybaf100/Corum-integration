@@ -1,8 +1,8 @@
-# v0.2.36 release build
+# v0.2.37 release build
 
-The v0.2.33 binary files that came with the input bundle are intentionally not
-part of the v0.2.36 source deliverable because they contain only the old Win64
-binary and report version v0.2.33.
+An older compiled binary is intentionally not included in this v0.2.37 source
+deliverable because it does not contain the evidence-linking, delayed-capture,
+or multi-map pending-capture fixes from this version.
 
 Build `.github/workflows/build-mod.yml` from the repository root to produce a
 combined Win64 + Android32 + Android64 `.geode` artifact, or use the local Geode

@@ -1,3 +1,10 @@
+# v0.2.37
+
+- End Level 화면 캡처를 `showLayer` 호출 후 0.80초로 늦춰 완료 창의 등장 애니메이션이 끝난 뒤 저장합니다.
+- 다른 증거 PNG를 업로드하는 중에도 새 맵의 End Screen 캡처를 건너뛰지 않습니다. 서로 다른 맵의 PNG와 메타데이터를 맵별 독립 pending 항목으로 유지합니다.
+- `Records`와 `CorumPublicClears`에 엔드스크린 증거 ID/URL을 함께 기록하고 기존 `증거` 열에도 원본 Drive URL을 표시합니다.
+- `setupCorumIntegration()` 실행 시 `ClearEvidence`에만 남은 기존 증거를 계정+대표 맵 기준으로 `Records`와 `CorumPublicClears`에 다시 연결합니다.
+
 # v0.2.36
 
 - Persist End Screen capture metadata before background PNG encoding starts, so a completed local capture survives a game restart even if the post-encode main-thread callback never ran

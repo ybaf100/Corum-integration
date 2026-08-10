@@ -34,7 +34,7 @@ Geometry Dash 계정 ID와 닉네임이 `CorumPlayers`에 자동 등록된다.
 End Screen 증거 연결에 쓰는 비공개 탭이다. 세 탭은 웹에 게시할 필요가 없다. 이전 버전이 만든
 `CorumClears` 탭이 남아 있어도 기록 조회와 점수 집계에서 함께 읽는다.
 
-API 2.21의 `Records`에는 `맵 코드` 바로 오른쪽에 `맵 제목` 열이 있으며 새 기록과
+API 2.22의 `Records`에는 `맵 코드` 바로 오른쪽에 `맵 제목` 열이 있으며 새 기록과
 갱신 기록 모두 현재 관리용 맵 제목을 저장한다. `setupCorumIntegration()`을 실행하면
 기존 기록의 맵 제목도 `sheet1` 기준으로 한 번 채워진다.
 
@@ -44,7 +44,7 @@ API 2.21의 `Records`에는 `맵 코드` 바로 오른쪽에 `맵 제목` 열이
 
 ## 자동 End Screen 증거
 
-API 2.21은 `POST action=evidence`를 받아 원본 PNG를 Drive의 비공개
+API 2.22는 `POST action=evidence`를 받아 원본 PNG를 Drive의 비공개
 `Corum Clear Evidence` 폴더에 저장하고 `ClearEvidence` 탭에 메타데이터를 남긴다.
 클라이언트가 보낸 폭·높이는 신뢰하지 않고 PNG IHDR에서 서버가 직접 다시 읽는다.
 이미지는 리사이즈하거나 재인코딩하지 않고 업로드된 PNG 바이트 그대로 보관한다.
@@ -53,7 +53,10 @@ API 2.21은 `POST action=evidence`를 받아 원본 PNG를 Drive의 비공개
 먼저 도착하면 이후 수동 기록 등록 시 같은 GD 계정·같은 Corum 맵의 최신 증거를 찾아
 연결한다. 따라서 이미지 업로드와 기록 등록의 도착 순서에 의존하지 않는다.
 
-`Records`의 `엔드스크린 증거 ID`, `엔드스크린 파일 URL`은 운영자용 비공개 열이다.
+`Records`와 `CorumPublicClears`에는 `엔드스크린 증거 ID`, `엔드스크린 파일 URL`이
+같이 저장되며 기존 `증거` 열에도 같은 Drive URL을 기록한다. 2.21 이하에서
+`ClearEvidence`에만 남은 기존 항목은 새 `Code.gs`로 교체한 뒤
+`setupCorumIntegration()`을 한 번 실행하면 계정+대표 맵 기준 최신 증거로 다시 연결된다.
 End Screen 자동 업로드 자체는 `Records`를 만들지 않는다. 기록 등록은 기존처럼 게임에서
 사용자가 `Submit` 또는 `Submit All`을 눌렀을 때만 수행한다.
 

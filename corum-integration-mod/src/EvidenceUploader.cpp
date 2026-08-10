@@ -1198,7 +1198,7 @@ class $modify(CorumEndLevelEvidenceLayer, EndLevelLayer) {
     void showLayer(bool instant) {
         EndLevelLayer::showLayer(instant);
 
-        if (m_fields->captureScheduled || s_uploadingEvidence) return;
+        if (m_fields->captureScheduled) return;
         if (!Mod::get()->getSettingValue<bool>("enable-record-submit")) return;
         if (!m_playLayer || !m_playLayer->m_level) return;
         if (m_playLayer->m_isPracticeMode || m_playLayer->m_isTestMode) return;
@@ -1216,12 +1216,12 @@ class $modify(CorumEndLevelEvidenceLayer, EndLevelLayer) {
         m_fields->captureScheduled = true;
         scheduleOnce(
             schedule_selector(CorumEndLevelEvidenceLayer::captureEndScreen),
-            0.20f
+            0.80f
         );
     }
 
     void captureEndScreen(float) {
-        if (!m_playLayer || !m_playLayer->m_level || s_uploadingEvidence) return;
+        if (!m_playLayer || !m_playLayer->m_level) return;
 
         auto const levelID = static_cast<int>(m_playLayer->m_level->m_levelID);
         auto const map = corum::ApiClient::startupMap(levelID);

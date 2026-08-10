@@ -1,4 +1,4 @@
-var CORUM_API_VERSION = "2.21";
+var CORUM_API_VERSION = "2.22";
 var CORUM_SCORING_VERSION = "corum-v1";
 var CORUM_SCORE_POLICY = "best-improvement-frozen";
 
@@ -151,6 +151,8 @@ var CORUM_PUBLIC_CLEAR_HEADERS = Object.freeze([
   "확정 점수",
   "점수 공식 버전",
   "점수 확정 시각",
+  "엔드스크린 증거 ID",
+  "엔드스크린 파일 URL",
 ]);
 
 var CORUM_SCORE_HEADER_ALIASES = Object.freeze({
@@ -313,6 +315,7 @@ function setupCorumIntegration() {
     if (record.recordId) syncPublicClearRecord_(record);
   });
   syncVerifierRecordSnapshots_(readMaps_());
+  var reconciledEvidenceCount = reconcileClearEvidenceLinks_();
   var evidenceFolder = getClearEvidenceFolder_();
 
   console.log("Corum Integration 시트 준비 완료");
@@ -322,6 +325,7 @@ function setupCorumIntegration() {
   console.log("웹 공개용 클리어 시트: " + publicClearsSheet.getName());
   console.log("엔드스크린 증거 시트: " + clearEvidenceSheet.getName());
   console.log("엔드스크린 원본 PNG 폴더: " + evidenceFolder.getName());
+  console.log("기존 기록에 다시 연결한 엔드스크린 증거: " + reconciledEvidenceCount + "건");
   console.log("CSMP 티어 시트: " + csmpTiersSheet.getName());
   console.log("Verifier 최초 기록 시트: " + verifierRecordsSheet.getName());
   console.log("Verifier는 CorumPlayers에 임시 가입 상태로 자동 생성됩니다.");
@@ -566,7 +570,7 @@ function resolveClearEvidence_(index, evidenceId, levelId) {
 
   if (requestedEvidenceId) {
     var exact = index.byId[requestedEvidenceId];
-    return exact && exact.levelId === canonicalLevelId ? exact : null;
+    if (exact && exact.levelId === canonicalLevelId) return exact;
   }
   return index.latestByLevel[canonicalLevelId] || null;
 }
@@ -574,6 +578,7 @@ function resolveClearEvidence_(index, evidenceId, levelId) {
 function evidenceRecordFields_(evidence) {
   if (!evidence) return {};
   return {
+    "증거": evidence.fileUrl,
     "엔드스크린 증거 ID": evidence.id,
     "엔드스크린 파일 URL": evidence.fileUrl,
   };
@@ -625,7 +630,107 @@ function linkEvidenceToExistingRecord_(evidence, accountId, levelId, mapsByLevel
   if (!recordId) return "";
   updateObjectRow_(sheet, bestRowIndex + 1, evidenceRecordFields_(evidence));
   linkClearEvidenceToRecord_(evidence, recordId);
+  var updatedRow = sheet
+    .getRange(bestRowIndex + 1, 1, 1, sheet.getLastColumn())
+    .getValues()[0];
+  syncPublicClearRecord_(publicClearRecord_(header, updatedRow));
   return recordId;
+}
+
+/**
+ * ClearEvidence에는 정상 저장됐지만 Records/Public 동기화가 빠진 기존 행을
+ * 계정+대표 맵 기준의 최신 증거로 다시 연결한다.
+ */
+function reconcileClearEvidenceLinks_() {
+  var evidenceSheet = getClearEvidenceSheet_();
+  var evidenceValues = evidenceSheet.getDataRange().getValues();
+  if (evidenceValues.length < 2) return 0;
+
+  var evidenceHeader = evidenceValues[0];
+  var evidenceIdColumn = findHeaderIndex_(evidenceHeader, ["증거 ID"]);
+  var evidenceLevelColumn = findHeaderIndex_(evidenceHeader, ["맵 코드"]);
+  var evidenceAccountColumn = findHeaderIndex_(evidenceHeader, ["GD 계정 ID"]);
+  var evidenceUrlColumn = findHeaderIndex_(evidenceHeader, ["파일 URL"]);
+  var evidenceUploadedColumn = findHeaderIndex_(evidenceHeader, ["업로드 시각"]);
+  var evidenceLinkedRecordColumn = findHeaderIndex_(evidenceHeader, ["연결 레코드 ID"]);
+  var latestByScope = {};
+
+  for (var evidenceRowIndex = 1; evidenceRowIndex < evidenceValues.length; evidenceRowIndex += 1) {
+    var evidenceRow = evidenceValues[evidenceRowIndex];
+    var evidenceId = String(evidenceRow[evidenceIdColumn] || "").trim();
+    var levelId = String(evidenceRow[evidenceLevelColumn] || "").trim();
+    var accountId = String(evidenceRow[evidenceAccountColumn] || "").trim();
+    var fileUrl = String(evidenceRow[evidenceUrlColumn] || "").trim();
+    if (!evidenceId || !levelId || !accountId || !fileUrl) continue;
+
+    var evidence = {
+      id: evidenceId,
+      levelId: levelId,
+      accountId: accountId,
+      fileUrl: fileUrl,
+      uploadedAt: String(evidenceRow[evidenceUploadedColumn] || "").trim(),
+      rowNumber: evidenceRowIndex + 1,
+    };
+    var scope = accountId + "|" + levelId;
+    var previous = latestByScope[scope];
+    var previousTime = previous ? Date.parse(previous.uploadedAt) || 0 : -1;
+    var evidenceTime = Date.parse(evidence.uploadedAt) || 0;
+    if (!previous || evidenceTime >= previousTime) latestByScope[scope] = evidence;
+  }
+
+  var mapsByLevelId = mapLookupByLevelId_(readMapsWithVerifierSnapshots_());
+  var recordsSheet = getRecordsSheet_();
+  var recordsValues = recordsSheet.getDataRange().getValues();
+  if (recordsValues.length < 2) return 0;
+
+  var recordHeader = recordsValues[0];
+  var recordIdColumn = findHeaderIndex_(recordHeader, ["레코드 ID", "Record ID"]);
+  var recordLevelColumn = findHeaderIndex_(recordHeader, ["맵 코드", "Level ID"]);
+  var recordAccountColumn = findHeaderIndex_(recordHeader, ["GD 계정 ID", "Account ID"]);
+  var recordPercentColumn = findHeaderIndex_(
+    recordHeader,
+    ["최고 기록(%)", "기록(%)", "Record", "Percent"],
+  );
+  var changedRecords = [];
+  var linkedRecordIdsByEvidenceRow = {};
+
+  for (var recordRowIndex = 1; recordRowIndex < recordsValues.length; recordRowIndex += 1) {
+    var recordRow = recordsValues[recordRowIndex];
+    if (parseRecordPercent_(recordRow[recordPercentColumn]) < 100) continue;
+
+    var rawLevelId = String(recordRow[recordLevelColumn] || "").trim();
+    var canonicalLevelId = canonicalLevelId_(rawLevelId, mapsByLevelId) || rawLevelId;
+    var recordAccountId = String(recordRow[recordAccountColumn] || "").trim();
+    var matchingEvidence = latestByScope[recordAccountId + "|" + canonicalLevelId];
+    if (!matchingEvidence) continue;
+
+    applyObjectToRow_(recordHeader, recordRow, evidenceRecordFields_(matchingEvidence));
+    var publicRecord = publicClearRecord_(recordHeader, recordRow);
+    changedRecords.push(publicRecord);
+    if (publicRecord.recordId) {
+      linkedRecordIdsByEvidenceRow[matchingEvidence.rowNumber] = publicRecord.recordId;
+    }
+  }
+
+  if (changedRecords.length === 0) return 0;
+
+  recordsSheet
+    .getRange(2, 1, recordsValues.length - 1, recordHeader.length)
+    .setValues(recordsValues.slice(1));
+
+  Object.keys(linkedRecordIdsByEvidenceRow).forEach(function (rowNumberText) {
+    var rowNumber = Number(rowNumberText);
+    evidenceValues[rowNumber - 1][evidenceLinkedRecordColumn] =
+      linkedRecordIdsByEvidenceRow[rowNumberText];
+  });
+  evidenceSheet
+    .getRange(2, evidenceLinkedRecordColumn + 1, evidenceValues.length - 1, 1)
+    .setValues(evidenceValues.slice(1).map(function (row) {
+      return [row[evidenceLinkedRecordColumn]];
+    }));
+
+  syncPublicClearRecords_(changedRecords);
+  return changedRecords.length;
 }
 
 /**
@@ -917,6 +1022,9 @@ function submitRecord_(body) {
       scoreLockedAt: recordedAt,
     };
     if (clearEvidence) {
+      createdRecord.proofUrl = clearEvidence.fileUrl;
+      createdRecord.evidenceId = clearEvidence.id;
+      createdRecord.evidenceUrl = clearEvidence.fileUrl;
       linkClearEvidenceToRecord_(clearEvidence, recordId);
     }
     syncPublicClearRecord_(createdRecord);
@@ -2483,6 +2591,8 @@ function publicClearRecord_(header, row) {
     platform: value(["플랫폼", "Platform"]),
     status: value(["상태", "Status"]) || "unverified",
     proofUrl: value(["증거", "Proof URL"]),
+    evidenceId: optionalValue(["엔드스크린 증거 ID", "End Screen Evidence ID"]),
+    evidenceUrl: optionalValue(["엔드스크린 파일 URL", "End Screen File URL"]),
     modVersion: value(["모드 버전", "Mod Version"]),
     scoredPercent: scoredPercent,
     scoredRank: scoredRank,
@@ -2538,6 +2648,8 @@ function syncPublicClearRecord_(record) {
     "확정 점수": record.score,
     "점수 공식 버전": record.scoringVersion,
     "점수 확정 시각": record.scoreLockedAt,
+    "엔드스크린 증거 ID": record.evidenceId,
+    "엔드스크린 파일 URL": record.evidenceUrl,
   };
   var publicRow = header.map(function (columnName) {
     return Object.prototype.hasOwnProperty.call(rowObject, columnName) ? rowObject[columnName] : "";
@@ -2602,6 +2714,8 @@ function syncPublicClearRecords_(records) {
       "확정 점수": record.score,
       "점수 공식 버전": record.scoringVersion,
       "점수 확정 시각": record.scoreLockedAt,
+      "엔드스크린 증거 ID": record.evidenceId,
+      "엔드스크린 파일 URL": record.evidenceUrl,
     };
     var publicRow = objectRow_(header, rowObject);
     var recordId = String(record.recordId || "").trim();
