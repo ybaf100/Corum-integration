@@ -1,4 +1,4 @@
-var CORUM_API_VERSION = "2.22";
+var CORUM_API_VERSION = "2.23";
 var CORUM_SCORING_VERSION = "corum-v1";
 var CORUM_SCORE_POLICY = "best-improvement-frozen";
 
@@ -9,7 +9,33 @@ var CORUM_SHEETS = Object.freeze({
   csmpTiers: "CSMP Tiers",
   verifierRecords: "CorumVerifierRecords",
   clearEvidence: "ClearEvidence",
+  clientVersions: "Corum Client Versions",
 });
+
+var CORUM_CLIENT_VERSION_HEADERS = Object.freeze([
+  "플랫폼",
+  "최소 지원 버전",
+  "최신 버전",
+  "업데이트 URL",
+  "버전 검사 활성",
+]);
+
+var CORUM_CLIENT_VERSION_DEFAULTS = Object.freeze([
+  Object.freeze([
+    "Windows",
+    "v1.0.0",
+    "v1.0.0",
+    "https://github.com/ybaf100/Corum-integration/releases/latest",
+    true,
+  ]),
+  Object.freeze([
+    "Android",
+    "v0.2.40",
+    "v0.2.40",
+    "https://github.com/ybaf100/Corum-integration/releases/latest",
+    true,
+  ]),
+]);
 
 var CORUM_VERIFIER_RECORD_HEADERS = Object.freeze([
   "Verifier 레코드 ID",
@@ -208,6 +234,7 @@ function doGet(event) {
         ok: true,
         maps: readMapsWithVerifierSnapshots_(),
         evidenceGeneration: clearEvidenceGeneration_(),
+        clientPolicy: readClientVersionPolicies_(),
       });
     }
 
@@ -285,11 +312,13 @@ function setupCorumIntegration() {
     CORUM_SHEETS.clearEvidence,
     CORUM_CLEAR_EVIDENCE_HEADERS,
   );
+  var clientVersionsSheet = ensureClientVersionsSheet_();
 
   playersSheet.setFrozenRows(1);
   clearsSheet.setFrozenRows(1);
   publicClearsSheet.setFrozenRows(1);
   clearEvidenceSheet.setFrozenRows(1);
+  clientVersionsSheet.setFrozenRows(1);
   migrateLegacyRecordPercent_(clearsSheet);
   migrateLegacyRecordPercent_(publicClearsSheet);
   ensureMapMinimumRecordColumn_();
@@ -325,6 +354,7 @@ function setupCorumIntegration() {
   console.log("웹 공개용 클리어 시트: " + publicClearsSheet.getName());
   console.log("엔드스크린 증거 시트: " + clearEvidenceSheet.getName());
   console.log("엔드스크린 원본 PNG 폴더: " + evidenceFolder.getName());
+  console.log("클라이언트 버전 정책 시트: " + clientVersionsSheet.getName());
   console.log("기존 기록에 다시 연결한 엔드스크린 증거: " + reconciledEvidenceCount + "건");
   console.log("CSMP 티어 시트: " + csmpTiersSheet.getName());
   console.log("Verifier 최초 기록 시트: " + verifierRecordsSheet.getName());
@@ -794,6 +824,9 @@ function setClearStatus(recordId, status, proofUrl) {
 }
 
 function submitRecord_(body) {
+  var versionRejection = clientVersionRejection_(body);
+  if (versionRejection) return versionRejection;
+
   var requestedLevelId = requirePositiveInteger_(body.levelId, "맵 코드");
   var accountId = requirePositiveInteger_(body.gdAccountId, "GD 계정 ID");
   var gdUsername = requireShortText_(body.gdUsername, "Geometry Dash 닉네임", 32);
@@ -1049,6 +1082,9 @@ function submitRecord_(body) {
  * 개별 기록의 실패는 results 배열에 남기고 나머지 기록은 계속 처리한다.
  */
 function submitBatchRecords_(body) {
+  var versionRejection = clientVersionRejection_(body);
+  if (versionRejection) return versionRejection;
+
   var accountId = requirePositiveInteger_(body.gdAccountId, "GD 계정 ID");
   var gdUsername = requireShortText_(body.gdUsername, "Geometry Dash 닉네임", 32);
   var rawRecords = body.records;
@@ -2873,6 +2909,223 @@ function readAllClearRecords_(existingMapLookup) {
   });
 }
 
+function ensureClientVersionsSheet_() {
+  var sheet = getOrCreateSheet_(
+    getSpreadsheet_(),
+    CORUM_SHEETS.clientVersions,
+    CORUM_CLIENT_VERSION_HEADERS,
+  );
+  var existingPlatforms = {};
+
+  if (sheet.getLastRow() >= 2) {
+    var values = sheet.getDataRange().getDisplayValues();
+    var platformColumn = findOptionalHeaderIndex_(
+      values[0],
+      ["플랫폼", "Platform"],
+    );
+    if (platformColumn !== -1) {
+      for (var rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
+        var platform = normalizeClientPlatform_(values[rowIndex][platformColumn]);
+        if (platform) existingPlatforms[platform] = true;
+      }
+    }
+  }
+
+  CORUM_CLIENT_VERSION_DEFAULTS.forEach(function (row) {
+    var platform = normalizeClientPlatform_(row[0]);
+    if (!platform || existingPlatforms[platform]) return;
+    sheet.appendRow(Array.prototype.slice.call(row));
+    existingPlatforms[platform] = true;
+  });
+  return sheet;
+}
+
+function normalizeClientPlatform_(value) {
+  var normalized = String(value == null ? "" : value)
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "");
+  if (normalized.indexOf("win") === 0) return "windows";
+  if (normalized.indexOf("android") === 0) return "android";
+  return "";
+}
+
+function parseSemanticVersion_(value) {
+  var match = String(value == null ? "" : value)
+    .trim()
+    .match(
+      /^[vV]?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/,
+    );
+  if (!match) return null;
+
+  var numbers = [Number(match[1]), Number(match[2]), Number(match[3])];
+  if (
+    numbers.some(function (number) {
+      return !Number.isSafeInteger(number) || number < 0;
+    })
+  ) {
+    return null;
+  }
+  return {
+    numbers: numbers,
+    prerelease: match[4] || "",
+  };
+}
+
+function compareSemanticVersions_(left, right) {
+  for (var index = 0; index < 3; index += 1) {
+    if (left.numbers[index] === right.numbers[index]) continue;
+    return left.numbers[index] < right.numbers[index] ? -1 : 1;
+  }
+
+  if (!left.prerelease && !right.prerelease) return 0;
+  if (!left.prerelease) return 1;
+  if (!right.prerelease) return -1;
+
+  var leftParts = left.prerelease.split(".");
+  var rightParts = right.prerelease.split(".");
+  var commonLength = Math.min(leftParts.length, rightParts.length);
+  for (var partIndex = 0; partIndex < commonLength; partIndex += 1) {
+    var leftPart = leftParts[partIndex];
+    var rightPart = rightParts[partIndex];
+    if (leftPart === rightPart) continue;
+
+    var leftNumeric = /^\d+$/.test(leftPart);
+    var rightNumeric = /^\d+$/.test(rightPart);
+    if (leftNumeric && rightNumeric) {
+      var leftNumber = Number(leftPart);
+      var rightNumber = Number(rightPart);
+      if (leftNumber !== rightNumber) return leftNumber < rightNumber ? -1 : 1;
+    } else if (leftNumeric !== rightNumeric) {
+      return leftNumeric ? -1 : 1;
+    }
+    return leftPart < rightPart ? -1 : 1;
+  }
+
+  if (leftParts.length === rightParts.length) return 0;
+  return leftParts.length < rightParts.length ? -1 : 1;
+}
+
+function clientVersionBoolean_(value, fallback) {
+  if (typeof value === "boolean") return value;
+  var normalized = String(value == null ? "" : value).trim().toLowerCase();
+  if (["true", "1", "yes", "y", "on", "사용", "활성"].indexOf(normalized) !== -1) {
+    return true;
+  }
+  if (["false", "0", "no", "n", "off", "미사용", "비활성"].indexOf(normalized) !== -1) {
+    return false;
+  }
+  return fallback;
+}
+
+function safeClientUpdateUrl_(value) {
+  var url = String(value == null ? "" : value).trim();
+  var releasePrefix = "https://github.com/ybaf100/Corum-integration/releases";
+  return url === releasePrefix || url.indexOf(releasePrefix + "/") === 0
+    ? url
+    : "";
+}
+
+function readClientVersionPolicies_() {
+  var sheet = getSpreadsheet_().getSheetByName(CORUM_SHEETS.clientVersions);
+  if (!sheet || sheet.getLastRow() < 2 || sheet.getLastColumn() < 1) return {};
+
+  var values = sheet.getDataRange().getValues();
+  var header = values[0];
+  var platformColumn = findOptionalHeaderIndex_(header, ["플랫폼", "Platform"]);
+  var minimumColumn = findOptionalHeaderIndex_(
+    header,
+    ["최소 지원 버전", "Minimum Supported Version", "Minimum Version"],
+  );
+  var latestColumn = findOptionalHeaderIndex_(
+    header,
+    ["최신 버전", "Latest Version"],
+  );
+  var updateColumn = findOptionalHeaderIndex_(
+    header,
+    ["업데이트 URL", "Update URL", "Download URL"],
+  );
+  var enabledColumn = findOptionalHeaderIndex_(
+    header,
+    ["버전 검사 활성", "Enforcement Enabled", "Enabled"],
+  );
+  if (platformColumn === -1 || minimumColumn === -1) return {};
+
+  var policies = {};
+  for (var rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
+    var row = values[rowIndex];
+    var platform = normalizeClientPlatform_(row[platformColumn]);
+    var minimum = String(row[minimumColumn] == null ? "" : row[minimumColumn]).trim();
+    if (!platform || !parseSemanticVersion_(minimum)) continue;
+
+    var latest = latestColumn === -1
+      ? minimum
+      : String(row[latestColumn] == null ? "" : row[latestColumn]).trim();
+    if (!parseSemanticVersion_(latest)) latest = minimum;
+
+    policies[platform] = {
+      minimumSupportedVersion: minimum,
+      latestVersion: latest,
+      updateUrl: updateColumn === -1
+        ? ""
+        : safeClientUpdateUrl_(row[updateColumn]),
+      enforcementEnabled: enabledColumn === -1
+        ? true
+        : clientVersionBoolean_(row[enabledColumn], true),
+    };
+  }
+  return policies;
+}
+
+function clientVersionRejection_(body) {
+  var policies = readClientVersionPolicies_();
+  var policyKeys = Object.keys(policies);
+  if (policyKeys.length === 0) return null;
+
+  var platform = normalizeClientPlatform_(body && body.platform);
+  var policy = policies[platform];
+  if (!platform || !policy) {
+    return json_({
+      ok: false,
+      error: {
+        code: "CLIENT_PLATFORM_UNSUPPORTED",
+        message: "이 플랫폼에서는 Corum 기록을 제출할 수 없습니다.",
+      },
+    });
+  }
+  if (!policy.enforcementEnabled) return null;
+
+  var current = parseSemanticVersion_(body && body.modVersion);
+  var minimum = parseSemanticVersion_(policy.minimumSupportedVersion);
+  if (!current || !minimum) {
+    return json_({
+      ok: false,
+      error: {
+        code: "CLIENT_VERSION_REQUIRED",
+        message: "C Integration 버전을 확인할 수 없습니다.",
+        platform: platform,
+        minimumSupportedVersion: policy.minimumSupportedVersion,
+        latestVersion: policy.latestVersion,
+        updateUrl: policy.updateUrl,
+      },
+    });
+  }
+
+  if (compareSemanticVersions_(current, minimum) >= 0) return null;
+  return json_({
+    ok: false,
+    error: {
+      code: "CLIENT_OUTDATED",
+      message: "지원이 종료된 C Integration 버전입니다. 업데이트 후 다시 시도해 주세요.",
+      platform: platform,
+      currentVersion: String(body.modVersion || "").trim(),
+      minimumSupportedVersion: policy.minimumSupportedVersion,
+      latestVersion: policy.latestVersion,
+      updateUrl: policy.updateUrl,
+    },
+  });
+}
+
 function getSpreadsheet_() {
   var spreadsheetId = PropertiesService.getScriptProperties().getProperty("SPREADSHEET_ID");
   if (spreadsheetId) return SpreadsheetApp.openById(spreadsheetId);
@@ -2903,6 +3156,7 @@ function getMapsSheet_() {
       name !== CORUM_SHEETS.csmpTiers &&
       name !== CORUM_SHEETS.verifierRecords &&
       name !== CORUM_SHEETS.clearEvidence &&
+      name !== CORUM_SHEETS.clientVersions &&
       CORUM_LEGACY_CLEAR_SHEET_NAMES.indexOf(name) === -1
     ) {
       return sheets[index];

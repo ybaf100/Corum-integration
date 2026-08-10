@@ -7,40 +7,84 @@ on:
       - "**"
 
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        config:
-          - name: Windows
-            os: windows-latest
-            target: Win64
-          - name: Android32
-            os: ubuntu-latest
-            target: Android32
-          - name: Android64
-            os: ubuntu-latest
-            target: Android64
-    name: ${{ matrix.config.name }}
-    runs-on: ${{ matrix.config.os }}
+  tests:
+    name: Validate policy and API
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Build the mod
+      - name: Validate Apps Script behavior
+        run: node apps-script/validate-record-sheet-compat.mjs
+      - name: Validate client version comparison
+        run: |
+          g++ -std=c++23 -Wall -Wextra -Wpedantic -Werror \
+            corum-integration-mod/tests/ClientVersionTest.cpp \
+            corum-integration-mod/src/ClientVersion.cpp \
+            -o /tmp/corum-client-version-test
+          /tmp/corum-client-version-test
+      - name: Validate scoring
+        run: |
+          g++ -std=c++23 -Wall -Wextra -Wpedantic -Werror \
+            corum-integration-mod/tests/ScoringTest.cpp \
+            corum-integration-mod/src/Scoring.cpp \
+            -o /tmp/corum-scoring-test
+          /tmp/corum-scoring-test
+
+  windows:
+    name: Windows v1.0.0
+    runs-on: windows-latest
+    needs:
+      - tests
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set Windows release version
+        shell: pwsh
+        run: |
+          $modJson = "corum-integration-mod/mod.json"
+          $cmake = "corum-integration-mod/CMakeLists.txt"
+          (Get-Content $modJson -Raw).Replace('"version": "v0.2.40"', '"version": "v1.0.0"') | Set-Content $modJson -NoNewline
+          (Get-Content $cmake -Raw).Replace('project(CorumIntegration VERSION 0.2.40)', 'project(CorumIntegration VERSION 1.0.0)') | Set-Content $cmake -NoNewline
+          if (-not (Select-String -Path $modJson -SimpleMatch '"version": "v1.0.0"')) { throw "Windows mod version was not updated" }
+          if (-not (Select-String -Path $cmake -SimpleMatch 'VERSION 1.0.0')) { throw "Windows CMake version was not updated" }
+      - name: Build Windows package
+        id: build
         uses: geode-sdk/build-geode-mod@main
         with:
           path: corum-integration-mod
-          target: ${{ matrix.config.target }}
-          combine: true
+          target: Win64
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Corum-Integration-Windows-v1.0.0
+          path: ${{ steps.build.outputs.build-output }}
 
-  package:
-    name: Package builds
+  android-build:
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - Android32
+          - Android64
+    name: ${{ matrix.target }} v0.2.40
     runs-on: ubuntu-latest
     needs:
-      - build
+      - tests
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build Android package
+        uses: geode-sdk/build-geode-mod@main
+        with:
+          path: corum-integration-mod
+          target: ${{ matrix.target }}
+          combine: true
+
+  android-package:
+    name: Package Android v0.2.40
+    runs-on: ubuntu-latest
+    needs:
+      - android-build
     steps:
       - uses: geode-sdk/build-geode-mod/combine@main
         id: build
       - uses: actions/upload-artifact@v7
         with:
-          name: Corum-Integration-v0.2.40
+          name: Corum-Integration-Android-v0.2.40
           path: ${{ steps.build.outputs.build-output }}

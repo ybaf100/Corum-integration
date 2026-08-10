@@ -382,6 +382,7 @@ for (const requiredSheet of [
   "ClearEvidence",
   "CSMP Tiers",
   "CorumVerifierRecords",
+  "Corum Client Versions",
 ]) {
   assert.ok(spreadsheet.getSheetByName(requiredSheet));
 }
@@ -455,7 +456,43 @@ const listPayload = JSON.parse(
 );
 assert.equal(listPayload.ok, true);
 assert.match(listPayload.evidenceGeneration, /^\d+$/);
+assert.equal(listPayload.clientPolicy.windows.minimumSupportedVersion, "v1.0.0");
+assert.equal(listPayload.clientPolicy.android.minimumSupportedVersion, "v0.2.40");
+assert.equal(listPayload.clientPolicy.windows.enforcementEnabled, true);
 const originalEvidenceGeneration = listPayload.evidenceGeneration;
+
+assert.equal(
+  context.compareSemanticVersions_(
+    context.parseSemanticVersion_("v0.2.40"),
+    context.parseSemanticVersion_("v0.2.9"),
+  ),
+  1,
+);
+assert.equal(
+  context.compareSemanticVersions_(
+    context.parseSemanticVersion_("v1.0.0-beta.1"),
+    context.parseSemanticVersion_("v1.0.0"),
+  ),
+  -1,
+);
+assert.equal(context.clientVersionRejection_({
+  platform: "Android64",
+  modVersion: "v0.2.40",
+}), null);
+assert.equal(
+  JSON.parse(context.clientVersionRejection_({
+    platform: "Android32",
+    modVersion: "v0.2.39",
+  }).text).error.code,
+  "CLIENT_OUTDATED",
+);
+assert.equal(
+  JSON.parse(context.clientVersionRejection_({
+    platform: "Windows",
+    modVersion: "",
+  }).text).error.code,
+  "CLIENT_VERSION_REQUIRED",
+);
 
 const mapsSheet = spreadsheet.getSheetByName("sheet1");
 const mapList = context.readMaps_();
@@ -492,7 +529,7 @@ const submissionBody = {
   jumps: 34,
   playTimeMs: 56000,
   platform: "Windows",
-  modVersion: "v0.2.26",
+  modVersion: "v1.0.0",
   gameVersion: "2.2081",
   geodeVersion: "v5.8.2",
   loadedMods: [
@@ -503,6 +540,20 @@ const submissionBody = {
   ],
   clientTimestamp: Date.parse("2026-07-30T12:00:00.000Z"),
 };
+
+const outdatedSubmissionPayload = JSON.parse(
+  context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        ...submissionBody,
+        modVersion: "v0.9.9",
+      }),
+    },
+  }).text,
+);
+assert.equal(outdatedSubmissionPayload.ok, false);
+assert.equal(outdatedSubmissionPayload.error.code, "CLIENT_OUTDATED");
+assert.equal(outdatedSubmissionPayload.error.minimumSupportedVersion, "v1.0.0");
 
 const createdPayload = JSON.parse(
   context.doPost({
@@ -717,7 +768,7 @@ const batchPayload = JSON.parse(
         gdAccountId: 50000001,
         gdUsername: "BatchPlayer",
         platform: "Windows",
-        modVersion: "v0.2.24",
+        modVersion: "v1.0.0",
         gameVersion: "2.2081",
         geodeVersion: "v5.8.2",
         loadedMods: [
@@ -753,7 +804,7 @@ const batchPayload = JSON.parse(
   }).text,
 );
 
-assert.equal(context.CORUM_API_VERSION, "2.22");
+assert.equal(context.CORUM_API_VERSION, "2.23");
 assert.equal(batchPayload.ok, true);
 assert.equal(batchPayload.batch, true);
 assert.equal(batchPayload.requested, 3);
@@ -889,6 +940,7 @@ assert.deepEqual(
     "CorumPlayers",
     "CorumPublicClears",
     "CorumVerifierRecords",
+    "Corum Client Versions",
     "Records",
     "sheet1",
   ].sort(),

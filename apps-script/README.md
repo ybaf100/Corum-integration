@@ -9,7 +9,7 @@
 3. `Code.gs` 내용을 이 폴더의 `Code.gs`로 교체한다.
 4. 프로젝트 설정에서 `appsscript.json` 표시를 켠 뒤 이 폴더의 파일과 맞춘다.
 5. 맵 데이터가 첫 번째 시트가 아니라면 스크립트 속성 `MAPS_SHEET_NAME`에 탭 이름을 입력한다.
-6. `setupCorumIntegration`을 한 번 실행하고 Sheets/Drive 권한을 승인한다. `CorumPlayers`, `Records`, `CorumPublicClears`, `CorumVerifierRecords`, `CSMP Tiers`, `ClearEvidence` 탭과 맵 시트의 `최소 등록 가능 기록`, `대체 맵 코드`, `CSMP 티어 배정` 열이 준비된다. Drive에는 비공개 `Corum Clear Evidence` 폴더가 자동 생성된다.
+6. `setupCorumIntegration`을 한 번 실행하고 Sheets/Drive 권한을 승인한다. `CorumPlayers`, `Records`, `CorumPublicClears`, `CorumVerifierRecords`, `CSMP Tiers`, `ClearEvidence`, `Corum Client Versions` 탭과 맵 시트의 `최소 등록 가능 기록`, `대체 맵 코드`, `CSMP 티어 배정` 열이 준비된다. Drive에는 비공개 `Corum Clear Evidence` 폴더가 자동 생성된다.
 7. `배포` → `새 배포` → `웹 앱`에서 다음처럼 설정한다.
    - 실행 사용자: 나
    - 액세스 권한: 모든 사용자
@@ -34,7 +34,7 @@ Geometry Dash 계정 ID와 닉네임이 `CorumPlayers`에 자동 등록된다.
 End Screen 증거 연결에 쓰는 비공개 탭이다. 세 탭은 웹에 게시할 필요가 없다. 이전 버전이 만든
 `CorumClears` 탭이 남아 있어도 기록 조회와 점수 집계에서 함께 읽는다.
 
-API 2.22의 `Records`에는 `맵 코드` 바로 오른쪽에 `맵 제목` 열이 있으며 새 기록과
+API 2.23의 `Records`에는 `맵 코드` 바로 오른쪽에 `맵 제목` 열이 있으며 새 기록과
 갱신 기록 모두 현재 관리용 맵 제목을 저장한다. `setupCorumIntegration()`을 실행하면
 기존 기록의 맵 제목도 `sheet1` 기준으로 한 번 채워진다.
 
@@ -42,9 +42,31 @@ API 2.22의 `Records`에는 `맵 코드` 바로 오른쪽에 `맵 제목` 열이
 수집한 로드된 Geode 모드 ID와 버전(`mod.id@version`)을 저장한다. 이 열은 웹 공개용
 `CorumPublicClears`와 공개 API 응답에는 복사하지 않으며 기록 판정에도 사용하지 않는다.
 
+## 지원 버전과 업데이트 주소
+
+`setupCorumIntegration()`이 만드는 `Corum Client Versions` 탭이 클라이언트 지원
+정책의 단일 기준이다.
+
+| 플랫폼 | 최소 지원 버전 | 최신 버전 | 업데이트 URL | 버전 검사 활성 |
+| --- | --- | --- | --- | --- |
+| Windows | `v1.0.0` | `v1.0.0` | 공식 GitHub Releases 주소 | `TRUE` |
+| Android | `v0.2.40` | `v0.2.40` | 공식 GitHub Releases 주소 | `TRUE` |
+
+`최소 지원 버전`보다 낮은 모드는 맵 목록과 레벨 정보를 계속 조회할 수 있지만,
+`record`와 `batchRecords` 제출은 `CLIENT_OUTDATED`로 거절된다. 모드도 같은 정책을
+게임 실행 시 한 번 받아 `C Integration is outdated!` 경고를 표시하고 종이비행기
+버튼을 눌렀을 때 업데이트를 요구한다.
+
+새 버전을 배포할 때 이 탭의 `최신 버전`과 `업데이트 URL`을 먼저 갱신한다. 구버전
+제출까지 막으려는 시점에만 `최소 지원 버전`을 올린다. `버전 검사 활성`을 `FALSE`로
+바꾸면 해당 플랫폼의 서버 차단을 임시로 해제할 수 있다. 버전은 반드시
+`v1.2.3` 형식으로 입력한다. 업데이트 URL은 안전을 위해
+`https://github.com/ybaf100/Corum-integration/releases` 아래 주소만 클라이언트에
+전달한다.
+
 ## 자동 End Screen 증거
 
-API 2.22는 `POST action=evidence`를 받아 원본 PNG를 Drive의 비공개
+API 2.23은 `POST action=evidence`를 받아 원본 PNG를 Drive의 비공개
 `Corum Clear Evidence` 폴더에 저장하고 `ClearEvidence` 탭에 메타데이터를 남긴다.
 클라이언트가 보낸 폭·높이는 신뢰하지 않고 PNG IHDR에서 서버가 직접 다시 읽는다.
 이미지는 리사이즈하거나 재인코딩하지 않고 업로드된 PNG 바이트 그대로 보관한다.
@@ -127,8 +149,9 @@ setClearStatus("레코드-ID", "verified", "https://증거-주소");
 `Submit All` 검토창이 현재 계정의 기존 기록을 놓치지 않고 불필요한 전체 점수표도 받지 않는다.
 
 `list`와 `map` 응답은 대표 `levelId`와 유효한 경우 `alternateLevelId`를 함께
-반환한다. `list`에는 현재 `ClearEvidence` 탭의 고유 ID를 `evidenceGeneration`으로
-함께 반환한다. 탭을 삭제하고 `setupCorumIntegration()`으로 다시 만들면 이 값이 자동으로
+반환한다. `list`에는 현재 `ClearEvidence` 탭의 고유 ID를 `evidenceGeneration`으로,
+플랫폼별 지원 버전 정책을 `clientPolicy`로 함께 반환한다. 탭을 삭제하고
+`setupCorumIntegration()`으로 다시 만들면 이 값이 자동으로
 바뀌어 클라이언트의 과거 완료 캡처 표시가 새 서버 상태를 가리지 않는다.
 `map`, `clears`, `record`, `batchRecords`는 두 ID를 모두 허용한다.
 
