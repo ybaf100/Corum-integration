@@ -17,7 +17,6 @@ internal static class Program
             new SettingsStore(),
             packageInspector,
             releaseClient,
-            new InstallationService(packageInspector, processService),
-            processService));
+            new InstallationService(packageInspector, processService)));
     }
 }

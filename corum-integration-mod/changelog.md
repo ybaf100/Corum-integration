@@ -1,3 +1,17 @@
+# v1\.0\.1
+
+- iOS arm64 타깃을 CI에서 빌드하고 Win64·Android32·Android64와 하나의
+  `.geode` 패키지로 통합하여 iPhone과 iPad에서 Corum Integration을
+  지원합니다\.
+- iOS 클라이언트의 플랫폼 식별, 지원 버전 정책과 기록 제출 처리를
+  추가합니다\.
+- 자동 설치기를 `약관 동의 → 설치·업데이트`의 두 단계 화면으로
+  변경하고, 동의 후 `다음`을 눌러야 설치 화면으로 이동하도록 합니다\.
+- 설치 화면에 Exit 버튼을 추가하고 Geometry Dash 실행 기능을
+  제거합니다\.
+- Release 게시 전에 통합 `.geode`에 Win64, iOS, Android32와 Android64
+  바이너리가 모두 들어 있는지 검증합니다\.
+
 # v1\.0\.0
 
 - Windows용 단일 파일 자동 설치기·업데이터·런처와 수동 설치용 `.geode`

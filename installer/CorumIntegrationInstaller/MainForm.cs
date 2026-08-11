@@ -14,7 +14,6 @@ internal sealed class MainForm : Form
     private readonly GeodePackageInspector _packageInspector;
     private readonly GitHubReleaseClient _releaseClient;
     private readonly InstallationService _installationService;
-    private readonly IGeometryDashProcessService _processService;
 
     private readonly Label _geometryDashStatus = CreateValueLabel();
     private readonly Label _geodeStatus = CreateValueLabel();
@@ -24,17 +23,22 @@ internal sealed class MainForm : Form
     private readonly Button _browseButton = new();
     private readonly Button _geodeButton = new();
     private readonly Button _installButton = new();
-    private readonly Button _launchButton = new();
     private readonly Button _refreshButton = new();
+    private readonly Button _exitButton = new();
     private readonly Button _readTermsButton = new();
     private readonly CheckBox _agreeToTerms = new();
     private readonly CheckBox _disagreeWithTerms = new();
+    private readonly Button _nextButton = new();
+    private readonly Button _termsExitButton = new();
     private readonly ProgressBar _progressBar = new();
 
+    private Control? _termsPage;
+    private Control? _installerPage;
     private string? _geometryDashDirectory;
     private bool _geodeInstalled;
     private bool _busy;
     private bool _replacementInProgress;
+    private bool _termsAccepted;
     private ReleaseInfo? _latestRelease;
     private IReadOnlyList<GeodePackageMetadata> _installedPackages = Array.Empty<GeodePackageMetadata>();
 
@@ -43,25 +47,23 @@ internal sealed class MainForm : Form
         SettingsStore settingsStore,
         GeodePackageInspector packageInspector,
         GitHubReleaseClient releaseClient,
-        InstallationService installationService,
-        IGeometryDashProcessService processService)
+        InstallationService installationService)
     {
         _geometryDashLocator = geometryDashLocator;
         _settingsStore = settingsStore;
         _packageInspector = packageInspector;
         _releaseClient = releaseClient;
         _installationService = installationService;
-        _processService = processService;
 
         InitializeWindow();
         BuildLayout();
         WireEvents();
     }
 
-    protected override async void OnShown(EventArgs eventArgs)
+    protected override void OnShown(EventArgs eventArgs)
     {
         base.OnShown(eventArgs);
-        await RefreshStateAsync(refreshRelease: true);
+        ShowTermsPage();
     }
 
     protected override void OnFormClosing(FormClosingEventArgs eventArgs)
@@ -89,8 +91,8 @@ internal sealed class MainForm : Form
         MaximizeBox = false;
         MinimizeBox = true;
         ShowIcon = false;
-        ClientSize = new Size(680, 620);
-        MinimumSize = new Size(696, 659);
+        ClientSize = new Size(680, 520);
+        MinimumSize = new Size(696, 559);
         MaximumSize = MinimumSize;
         AutoScaleMode = AutoScaleMode.Dpi;
         Font = new Font("Segoe UI", 9F);
@@ -99,19 +101,63 @@ internal sealed class MainForm : Form
 
     private void BuildLayout()
     {
+        var installerPage = CreateInstallerPage();
+        var termsPage = CreateTermsPage();
+        _installerPage = installerPage;
+        _termsPage = termsPage;
+        installerPage.Visible = false;
+
+        Controls.Add(installerPage);
+        Controls.Add(termsPage);
+    }
+
+    private Control CreateTermsPage()
+    {
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             Padding = new Padding(28, 24, 28, 20),
             ColumnCount = 1,
-            RowCount = 8,
+            RowCount = 6,
+            BackColor = BackColor
+        };
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 66));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 226));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        root.Controls.Add(CreateHeader(), 0, 0);
+        root.Controls.Add(new Label
+        {
+            Text = "설치 또는 업데이트를 계속하기 전에 약관을 확인하고 동의 여부를 선택해 주세요.",
+            Dock = DockStyle.Fill,
+            ForeColor = MutedColor,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Padding = new Padding(2, 0, 2, 0)
+        }, 0, 1);
+        root.Controls.Add(CreateSeparator(), 0, 2);
+        root.Controls.Add(CreateTermsPanel(), 0, 3);
+        root.Controls.Add(CreateTermsNavigationPanel(), 0, 4);
+
+        return root;
+    }
+
+    private Control CreateInstallerPage()
+    {
+        var root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(28, 24, 28, 20),
+            ColumnCount = 1,
+            RowCount = 7,
             BackColor = BackColor
         };
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 66));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 202));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 142));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -120,21 +166,20 @@ internal sealed class MainForm : Form
         root.Controls.Add(CreateStatusPanel(), 0, 1);
         root.Controls.Add(CreateActionPanel(), 0, 2);
         root.Controls.Add(CreateSeparator(), 0, 3);
-        root.Controls.Add(CreateTermsPanel(), 0, 4);
 
         _progressBar.Dock = DockStyle.Fill;
         _progressBar.Style = ProgressBarStyle.Marquee;
         _progressBar.MarqueeAnimationSpeed = 0;
         _progressBar.Visible = false;
-        root.Controls.Add(_progressBar, 0, 5);
+        root.Controls.Add(_progressBar, 0, 4);
 
         _statusMessage.Dock = DockStyle.Fill;
         _statusMessage.ForeColor = MutedColor;
         _statusMessage.TextAlign = ContentAlignment.MiddleLeft;
         _statusMessage.AutoEllipsis = true;
-        root.Controls.Add(_statusMessage, 0, 6);
+        root.Controls.Add(_statusMessage, 0, 5);
 
-        Controls.Add(root);
+        return root;
     }
 
     private Control CreateHeader()
@@ -150,7 +195,7 @@ internal sealed class MainForm : Form
         };
         var subtitle = new Label
         {
-            Text = $"{InstallerVersion.GetDisplayVersion()} Installer · Updater · Launcher",
+            Text = $"{InstallerVersion.GetDisplayVersion()} Installer · Updater",
             AutoSize = true,
             Location = new Point(2, 42),
             ForeColor = MutedColor
@@ -200,25 +245,25 @@ internal sealed class MainForm : Form
             ColumnCount = 3,
             RowCount = 1
         };
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40));
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 18));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
 
         _installButton.Text = "Install";
         _installButton.Dock = DockStyle.Fill;
         _installButton.Font = new Font("Segoe UI Semibold", 9.5F, FontStyle.Bold);
 
-        _launchButton.Text = "Launch Geometry Dash";
-        _launchButton.Dock = DockStyle.Fill;
-        _launchButton.Margin = new Padding(8, 0, 0, 0);
-
         _refreshButton.Text = "Refresh";
         _refreshButton.Dock = DockStyle.Fill;
         _refreshButton.Margin = new Padding(8, 0, 0, 0);
 
+        _exitButton.Text = "Exit";
+        _exitButton.Dock = DockStyle.Fill;
+        _exitButton.Margin = new Padding(8, 0, 0, 0);
+
         panel.Controls.Add(_installButton, 0, 0);
-        panel.Controls.Add(_launchButton, 1, 0);
-        panel.Controls.Add(_refreshButton, 2, 0);
+        panel.Controls.Add(_refreshButton, 1, 0);
+        panel.Controls.Add(_exitButton, 2, 0);
         return panel;
     }
 
@@ -301,13 +346,41 @@ internal sealed class MainForm : Form
         return panel;
     }
 
+    private Control CreateTermsNavigationPanel()
+    {
+        var panel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(0, 10, 0, 2),
+            ColumnCount = 3,
+            RowCount = 1
+        };
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 116));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 124));
+
+        _termsExitButton.Text = "Exit";
+        _termsExitButton.Dock = DockStyle.Fill;
+        _termsExitButton.Margin = new Padding(0, 0, 8, 0);
+
+        _nextButton.Text = "다음";
+        _nextButton.Dock = DockStyle.Fill;
+        _nextButton.Font = new Font("Segoe UI Semibold", 9.5F, FontStyle.Bold);
+
+        panel.Controls.Add(_termsExitButton, 1, 0);
+        panel.Controls.Add(_nextButton, 2, 0);
+        return panel;
+    }
+
     private void WireEvents()
     {
         _browseButton.Click += BrowseButtonOnClick;
         _geodeButton.Click += (_, _) => OpenExternalUrl(AppConstants.GeodeInstallUrl);
         _refreshButton.Click += async (_, _) => await RefreshStateAsync(refreshRelease: true);
         _installButton.Click += InstallButtonOnClick;
-        _launchButton.Click += LaunchButtonOnClick;
+        _exitButton.Click += (_, _) => Close();
+        _termsExitButton.Click += (_, _) => Close();
+        _nextButton.Click += NextButtonOnClick;
         _readTermsButton.Click += (_, _) =>
         {
             using var dialog = new TermsDialog();
@@ -331,6 +404,53 @@ internal sealed class MainForm : Form
 
             UpdateControls();
         };
+    }
+
+    private void ShowTermsPage()
+    {
+        _termsAccepted = false;
+        if (_termsPage is not null)
+        {
+            _termsPage.Visible = true;
+            _termsPage.BringToFront();
+        }
+
+        if (_installerPage is not null)
+        {
+            _installerPage.Visible = false;
+        }
+
+        AcceptButton = _nextButton;
+        UpdateControls();
+    }
+
+    private async void NextButtonOnClick(object? sender, EventArgs eventArgs)
+    {
+        if (!_agreeToTerms.Checked)
+        {
+            MessageBox.Show(
+                this,
+                "약관을 읽고 ‘동의합니다.’를 선택한 뒤 다음 단계로 진행해 주세요.",
+                "약관 동의 필요",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return;
+        }
+
+        _termsAccepted = true;
+        if (_termsPage is not null)
+        {
+            _termsPage.Visible = false;
+        }
+
+        if (_installerPage is not null)
+        {
+            _installerPage.Visible = true;
+            _installerPage.BringToFront();
+        }
+
+        AcceptButton = null;
+        await RefreshStateAsync(refreshRelease: true);
     }
 
     private async Task RefreshStateAsync(bool refreshRelease)
@@ -462,11 +582,11 @@ internal sealed class MainForm : Form
 
     private async void InstallButtonOnClick(object? sender, EventArgs eventArgs)
     {
-        if (!_agreeToTerms.Checked)
+        if (!_termsAccepted)
         {
             MessageBox.Show(
                 this,
-                "약관을 읽고 ‘동의합니다.’를 선택한 뒤 설치 또는 업데이트를 진행해 주세요.",
+                "약관 동의 단계를 완료한 뒤 설치 또는 업데이트를 진행해 주세요.",
                 "약관 동의 필요",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
@@ -514,7 +634,7 @@ internal sealed class MainForm : Form
                 "Installation complete",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
-            ShowStatus("Installation complete. You can launch Geometry Dash.", isError: false);
+            ShowStatus("Installation complete.", isError: false);
         }
         catch (InstallerException exception)
         {
@@ -530,41 +650,6 @@ internal sealed class MainForm : Form
         {
             download?.Dispose();
             SetBusy(false);
-        }
-    }
-
-    private void LaunchButtonOnClick(object? sender, EventArgs eventArgs)
-    {
-        var geometryDashDirectory = _geometryDashDirectory;
-        if (geometryDashDirectory is null)
-        {
-            ShowStatus("Geometry Dash was not found.", isError: true);
-            return;
-        }
-
-        if (_processService.IsRunning())
-        {
-            MessageBox.Show(
-                this,
-                "Geometry Dash is already running.",
-                "Geometry Dash",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
-            return;
-        }
-
-        try
-        {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = Path.Combine(geometryDashDirectory, AppConstants.GeometryDashExecutableName),
-                WorkingDirectory = geometryDashDirectory,
-                UseShellExecute = true
-            });
-        }
-        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
-        {
-            ShowStatus("Geometry Dash could not be launched from the detected folder.", isError: true);
         }
     }
 
@@ -649,17 +734,19 @@ internal sealed class MainForm : Form
 
         _installButton.Enabled = !_busy &&
                                  !newerThanRelease &&
-                                 _agreeToTerms.Checked &&
+                                 _termsAccepted &&
                                  _geometryDashDirectory is not null &&
                                  _geodeInstalled &&
                                  _latestRelease is not null;
-        _launchButton.Enabled = !_busy && _geometryDashDirectory is not null && installedPackage is not null;
         _browseButton.Enabled = !_busy;
         _geodeButton.Enabled = !_busy;
         _refreshButton.Enabled = !_busy;
+        _exitButton.Enabled = !_busy;
         _readTermsButton.Enabled = !_busy;
         _agreeToTerms.Enabled = !_busy;
         _disagreeWithTerms.Enabled = !_busy;
+        _nextButton.Enabled = !_busy && _agreeToTerms.Checked;
+        _termsExitButton.Enabled = !_busy;
     }
 
     private GeodePackageMetadata? SelectHighestInstalledPackage()

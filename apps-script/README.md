@@ -49,8 +49,9 @@ API 2.23의 `Records`에는 `맵 코드` 바로 오른쪽에 `맵 제목` 열이
 
 | 플랫폼 | 최소 지원 버전 | 최신 버전 | 업데이트 URL | 버전 검사 활성 |
 | --- | --- | --- | --- | --- |
-| Windows | `v1.0.0` | `v1.0.0` | 공식 GitHub Releases 주소 | `TRUE` |
-| Android | `v1.0.0` | `v1.0.0` | 공식 GitHub Releases 주소 | `TRUE` |
+| Windows | `v1.0.0` | `v1.0.1` | 공식 GitHub Releases 주소 | `TRUE` |
+| Android | `v1.0.0` | `v1.0.1` | 공식 GitHub Releases 주소 | `TRUE` |
+| iOS | `v1.0.1` | `v1.0.1` | 공식 GitHub Releases 주소 | `TRUE` |
 
 `최소 지원 버전`보다 낮은 모드는 맵 목록과 레벨 정보를 계속 조회할 수 있지만,
 `record`와 `batchRecords` 제출은 `CLIENT_OUTDATED`로 거절된다. 모드도 같은 정책을
@@ -67,6 +68,11 @@ API 2.23의 `Records`에는 `맵 코드` 바로 오른쪽에 `맵 제목` 열이
 v1.0.0 통합 출시용 `Code.gs`에서 `setupCorumIntegration()`을 실행하면, 이전 코드가
 만든 Android 기본값 `v0.2.40`/`v0.2.40` 행은 `v1.0.0`/`v1.0.0`으로 자동
 이행된다. 운영자가 그 행을 다른 값으로 직접 바꿨다면 덮어쓰지 않는다.
+
+v1.0.1 배포용 코드에서는 기본 Windows·Android 정책의 최소 지원 버전을
+`v1.0.0`으로 유지한 채 최신 버전만 `v1.0.1`로 이행한다. iOS는 처음 지원되는
+`v1.0.1`을 최소·최신 버전으로 사용한다. 운영자가 직접 수정한 정책 행은
+덮어쓰지 않는다.
 
 ## 자동 End Screen 증거
 

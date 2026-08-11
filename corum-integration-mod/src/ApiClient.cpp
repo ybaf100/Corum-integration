@@ -39,6 +39,8 @@ std::string clientPlatformKey() {
     return "windows";
 #elif defined(GEODE_IS_ANDROID)
     return "android";
+#elif defined(GEODE_IS_IOS)
+    return "ios";
 #else
     return "unsupported";
 #endif

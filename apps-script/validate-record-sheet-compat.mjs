@@ -480,8 +480,11 @@ const listPayload = JSON.parse(
 assert.equal(listPayload.ok, true);
 assert.match(listPayload.evidenceGeneration, /^\d+$/);
 assert.equal(listPayload.clientPolicy.windows.minimumSupportedVersion, "v1.0.0");
+assert.equal(listPayload.clientPolicy.windows.latestVersion, "v1.0.1");
 assert.equal(listPayload.clientPolicy.android.minimumSupportedVersion, "v1.0.0");
-assert.equal(listPayload.clientPolicy.android.latestVersion, "v1.0.0");
+assert.equal(listPayload.clientPolicy.android.latestVersion, "v1.0.1");
+assert.equal(listPayload.clientPolicy.ios.minimumSupportedVersion, "v1.0.1");
+assert.equal(listPayload.clientPolicy.ios.latestVersion, "v1.0.1");
 assert.equal(listPayload.clientPolicy.windows.enforcementEnabled, true);
 const originalEvidenceGeneration = listPayload.evidenceGeneration;
 
@@ -503,6 +506,25 @@ assert.equal(context.clientVersionRejection_({
   platform: "Android64",
   modVersion: "v1.0.0",
 }), null);
+assert.equal(context.clientVersionRejection_({
+  platform: "iOS",
+  modVersion: "v1.0.1",
+}), null);
+assert.equal(context.clientVersionRejection_({
+  platform: "iPhone",
+  modVersion: "v1.0.1",
+}), null);
+assert.equal(context.clientVersionRejection_({
+  platform: "iPadOS",
+  modVersion: "v1.0.1",
+}), null);
+assert.equal(
+  JSON.parse(context.clientVersionRejection_({
+    platform: "iOS",
+    modVersion: "v1.0.0",
+  }).text).error.code,
+  "CLIENT_OUTDATED",
+);
 assert.equal(
   JSON.parse(context.clientVersionRejection_({
     platform: "Android32",

@@ -11,7 +11,7 @@
     <AssemblyName>CorumIntegrationInstaller</AssemblyName>
     <RootNamespace>CorumIntegrationInstaller</RootNamespace>
     <Product>Corum Integration Installer</Product>
-    <Description>Windows installer, updater and launcher for Corum Integration.</Description>
+    <Description>Windows installer and updater for Corum Integration.</Description>
     <Authors>hwanhee1</Authors>
     <Company>hwanhee1</Company>
     <ApplicationManifest>app.manifest</ApplicationManifest>

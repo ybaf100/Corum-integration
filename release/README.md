@@ -6,7 +6,7 @@
 
 - `.github/workflows/build-mod.yml`
   - 기존 Apps Script·버전 비교·점수 테스트를 실행합니다.
-  - Win64, Android32와 Android64를 빌드하고 하나의 패키지로 combine합니다.
+  - Win64, iOS, Android32와 Android64를 빌드하고 하나의 패키지로 combine합니다.
   - `Corum-Integration-v{VERSION}.geode`를 artifact로 게시합니다.
 - `.github/workflows/build-installer.yml`
   - 설치기 핵심 로직 테스트를 실행합니다.

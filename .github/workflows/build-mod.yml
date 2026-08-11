@@ -61,6 +61,9 @@ jobs:
           - name: Windows
             os: windows-latest
             target: Win64
+          - name: iOS
+            os: macos-latest
+            target: iOS
           - name: Android32
             os: ubuntu-latest
             target: Android32
@@ -112,11 +115,24 @@ jobs:
           package_path, expected_version = sys.argv[1:]
           with zipfile.ZipFile(package_path) as package:
               manifest = json.loads(package.read("mod.json"))
+              package_files = set(package.namelist())
           if manifest.get("id") != "hwanhee1.corum_integration":
               raise SystemExit(f"Unexpected Mod ID: {manifest.get('id')}")
           if manifest.get("version") != expected_version:
               raise SystemExit(
                   f"Package version {manifest.get('version')} does not match {expected_version}"
+              )
+          expected_binaries = {
+              "hwanhee1.corum_integration.dll",
+              "hwanhee1.corum_integration.ios.dylib",
+              "hwanhee1.corum_integration.android32.so",
+              "hwanhee1.corum_integration.android64.so",
+          }
+          missing_binaries = sorted(expected_binaries - package_files)
+          if missing_binaries:
+              raise SystemExit(
+                  "Combined package is missing platform binaries: "
+                  + ", ".join(missing_binaries)
               )
           PY
       - uses: actions/upload-artifact@v7
