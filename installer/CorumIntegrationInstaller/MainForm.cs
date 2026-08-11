@@ -26,8 +26,9 @@ internal sealed class MainForm : Form
     private readonly Button _installButton = new();
     private readonly Button _launchButton = new();
     private readonly Button _refreshButton = new();
-    private readonly Button _privacyDetailsButton = new();
-    private readonly CheckBox _privacyAcknowledgement = new();
+    private readonly Button _readTermsButton = new();
+    private readonly CheckBox _agreeToTerms = new();
+    private readonly CheckBox _disagreeWithTerms = new();
     private readonly ProgressBar _progressBar = new();
 
     private string? _geometryDashDirectory;
@@ -119,7 +120,7 @@ internal sealed class MainForm : Form
         root.Controls.Add(CreateStatusPanel(), 0, 1);
         root.Controls.Add(CreateActionPanel(), 0, 2);
         root.Controls.Add(CreateSeparator(), 0, 3);
-        root.Controls.Add(CreatePrivacyPanel(), 0, 4);
+        root.Controls.Add(CreateTermsPanel(), 0, 4);
 
         _progressBar.Dock = DockStyle.Fill;
         _progressBar.Style = ProgressBarStyle.Marquee;
@@ -229,25 +230,24 @@ internal sealed class MainForm : Form
         BackColor = Color.FromArgb(218, 221, 226)
     };
 
-    private Control CreatePrivacyPanel()
+    private Control CreateTermsPanel()
     {
         var panel = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            RowCount = 4,
-            Padding = new Padding(0, 2, 0, 0)
+            RowCount = 2,
+            Padding = new Padding(0, 2, 0, 0),
+            BackColor = BackColor
         };
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112));
-        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
-        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
-        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
-        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 56));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 44));
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+        panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         var heading = new Label
         {
-            Text = "Privacy & record verification",
+            Text = "약관 동의",
             Dock = DockStyle.Fill,
             Font = new Font("Segoe UI Semibold", 10.5F, FontStyle.Bold),
             ForeColor = Color.FromArgb(35, 39, 45),
@@ -255,36 +255,49 @@ internal sealed class MainForm : Form
         };
         panel.SetColumnSpan(heading, 2);
 
-        var summary = new Label
+        var termsPanel = new TableLayoutPanel
         {
-            Text = "Record submission can include Geometry Dash account, map/record and version data, loaded non-built-in Geode mod IDs/versions, and an eligible End Level PNG. Nothing is uploaded at clear time; available data is sent only when you press Submit or Submit All.",
             Dock = DockStyle.Fill,
-            ForeColor = MutedColor
+            ColumnCount = 1,
+            RowCount = 2,
+            Margin = new Padding(30, 10, 28, 8)
         };
-        panel.SetColumnSpan(summary, 2);
+        termsPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+        termsPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
 
-        var scope = new Label
+        var termsLabel = new Label
         {
-            Text = "Other apps, desktop, notifications and OS UI are not captured. Record submission can be disabled in Geode settings.",
+            Text = "Corum Integration 모드 약관",
             Dock = DockStyle.Fill,
-            ForeColor = MutedColor,
-            TextAlign = ContentAlignment.MiddleLeft
+            TextAlign = ContentAlignment.BottomLeft,
+            ForeColor = Color.FromArgb(35, 39, 45)
         };
 
-        _privacyDetailsButton.Text = "View details";
-        _privacyDetailsButton.Dock = DockStyle.Fill;
-        _privacyDetailsButton.Margin = new Padding(8, 2, 0, 2);
+        _readTermsButton.Text = "약관 읽기";
+        _readTermsButton.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left;
+        _readTermsButton.Size = new Size(138, 34);
+        _readTermsButton.Margin = new Padding(0, 3, 0, 3);
+        termsPanel.Controls.Add(termsLabel, 0, 0);
+        termsPanel.Controls.Add(_readTermsButton, 0, 1);
 
-        _privacyAcknowledgement.Text = "I have reviewed the privacy and record verification information above.";
-        _privacyAcknowledgement.Dock = DockStyle.Fill;
-        _privacyAcknowledgement.AutoSize = false;
-        panel.SetColumnSpan(_privacyAcknowledgement, 2);
+        var choicePanel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            Margin = new Padding(18, 12, 0, 8)
+        };
+        choicePanel.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+        choicePanel.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+
+        ConfigureTermsChoice(_agreeToTerms, "동의합니다.");
+        ConfigureTermsChoice(_disagreeWithTerms, "동의하지 않습니다.");
+        choicePanel.Controls.Add(_agreeToTerms, 0, 0);
+        choicePanel.Controls.Add(_disagreeWithTerms, 0, 1);
 
         panel.Controls.Add(heading, 0, 0);
-        panel.Controls.Add(summary, 0, 1);
-        panel.Controls.Add(scope, 0, 2);
-        panel.Controls.Add(_privacyDetailsButton, 1, 2);
-        panel.Controls.Add(_privacyAcknowledgement, 0, 3);
+        panel.Controls.Add(termsPanel, 0, 1);
+        panel.Controls.Add(choicePanel, 1, 1);
         return panel;
     }
 
@@ -295,12 +308,29 @@ internal sealed class MainForm : Form
         _refreshButton.Click += async (_, _) => await RefreshStateAsync(refreshRelease: true);
         _installButton.Click += InstallButtonOnClick;
         _launchButton.Click += LaunchButtonOnClick;
-        _privacyDetailsButton.Click += (_, _) =>
+        _readTermsButton.Click += (_, _) =>
         {
-            using var dialog = new PrivacyDialog();
+            using var dialog = new TermsDialog();
             dialog.ShowDialog(this);
         };
-        _privacyAcknowledgement.CheckedChanged += (_, _) => UpdateControls();
+        _agreeToTerms.CheckedChanged += (_, _) =>
+        {
+            if (_agreeToTerms.Checked)
+            {
+                _disagreeWithTerms.Checked = false;
+            }
+
+            UpdateControls();
+        };
+        _disagreeWithTerms.CheckedChanged += (_, _) =>
+        {
+            if (_disagreeWithTerms.Checked)
+            {
+                _agreeToTerms.Checked = false;
+            }
+
+            UpdateControls();
+        };
     }
 
     private async Task RefreshStateAsync(bool refreshRelease)
@@ -432,12 +462,12 @@ internal sealed class MainForm : Form
 
     private async void InstallButtonOnClick(object? sender, EventArgs eventArgs)
     {
-        if (!_privacyAcknowledgement.Checked)
+        if (!_agreeToTerms.Checked)
         {
             MessageBox.Show(
                 this,
-                "Review and acknowledge the privacy and record verification information before installing.",
-                "Privacy information",
+                "약관을 읽고 ‘동의합니다.’를 선택한 뒤 설치 또는 업데이트를 진행해 주세요.",
+                "약관 동의 필요",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
             return;
@@ -619,7 +649,7 @@ internal sealed class MainForm : Form
 
         _installButton.Enabled = !_busy &&
                                  !newerThanRelease &&
-                                 _privacyAcknowledgement.Checked &&
+                                 _agreeToTerms.Checked &&
                                  _geometryDashDirectory is not null &&
                                  _geodeInstalled &&
                                  _latestRelease is not null;
@@ -627,8 +657,9 @@ internal sealed class MainForm : Form
         _browseButton.Enabled = !_busy;
         _geodeButton.Enabled = !_busy;
         _refreshButton.Enabled = !_busy;
-        _privacyDetailsButton.Enabled = !_busy;
-        _privacyAcknowledgement.Enabled = !_busy;
+        _readTermsButton.Enabled = !_busy;
+        _agreeToTerms.Enabled = !_busy;
+        _disagreeWithTerms.Enabled = !_busy;
     }
 
     private GeodePackageMetadata? SelectHighestInstalledPackage()
@@ -787,6 +818,16 @@ internal sealed class MainForm : Form
     {
         button.Dock = DockStyle.Fill;
         button.Margin = new Padding(8, 6, 8, 6);
+    }
+
+    private static void ConfigureTermsChoice(CheckBox checkBox, string text)
+    {
+        checkBox.Text = text;
+        checkBox.Dock = DockStyle.Fill;
+        checkBox.AutoSize = false;
+        checkBox.CheckAlign = ContentAlignment.MiddleLeft;
+        checkBox.TextAlign = ContentAlignment.MiddleLeft;
+        checkBox.Padding = new Padding(2, 0, 0, 0);
     }
 
     private static void SetValue(Label label, string value, bool success)

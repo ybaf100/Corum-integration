@@ -9,8 +9,6 @@ on:
     paths:
       - "installer/**"
       - "corum-integration-mod/mod.json"
-      - "corum-integration-mod/PRIVACY.md"
-      - "DISCORD-DOWNLOAD-NOTICE.md"
       - ".github/workflows/build-installer.yml"
 
 permissions:

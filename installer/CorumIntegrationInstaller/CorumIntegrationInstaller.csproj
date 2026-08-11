@@ -29,13 +29,4 @@
   <ItemGroup>
     <ProjectReference Include="..\CorumIntegrationInstaller.Core\CorumIntegrationInstaller.Core.csproj" />
   </ItemGroup>
-
-  <ItemGroup>
-    <EmbeddedResource Include="..\..\DISCORD-DOWNLOAD-NOTICE.md">
-      <LogicalName>CorumIntegrationInstaller.Privacy.DownloadNotice.md</LogicalName>
-    </EmbeddedResource>
-    <EmbeddedResource Include="..\..\corum-integration-mod\PRIVACY.md">
-      <LogicalName>CorumIntegrationInstaller.Privacy.PrivacyPolicy.md</LogicalName>
-    </EmbeddedResource>
-  </ItemGroup>
 </Project>

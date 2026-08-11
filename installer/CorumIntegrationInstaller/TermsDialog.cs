@@ -1,32 +1,34 @@
 namespace CorumIntegrationInstaller;
 
-internal sealed class PrivacyDialog : Form
+internal sealed class TermsDialog : Form
 {
-    public PrivacyDialog()
+    public TermsDialog()
     {
-        Text = "Privacy / Record verification information";
+        Text = "Corum Integration 약관";
         StartPosition = FormStartPosition.CenterParent;
         MinimumSize = new Size(620, 460);
         Size = new Size(760, 620);
         ShowIcon = false;
         MaximizeBox = true;
         MinimizeBox = false;
+        AutoScaleMode = AutoScaleMode.Dpi;
         Font = new Font("Segoe UI", 9F);
 
-        var textBox = new TextBox
+        var textBox = new RichTextBox
         {
             Dock = DockStyle.Fill,
-            Multiline = true,
             ReadOnly = true,
-            ScrollBars = ScrollBars.Both,
+            DetectUrls = false,
             WordWrap = true,
+            ScrollBars = RichTextBoxScrollBars.Vertical,
             BackColor = SystemColors.Window,
-            Text = PrivacyContent.Load()
+            BorderStyle = BorderStyle.FixedSingle,
+            Text = TermsContent.Text
         };
 
         var closeButton = new Button
         {
-            Text = "Close",
+            Text = "닫기",
             AutoSize = true,
             DialogResult = DialogResult.OK,
             Padding = new Padding(18, 4, 18, 4),
