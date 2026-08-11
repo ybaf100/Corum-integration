@@ -16,6 +16,7 @@ int main() {
     assert(versionMeetsMinimum("v1.0.1", "v1.0.0"));
     assert(versionMeetsMinimum("v0.2.40", "v0.2.9"));
     assert(!versionMeetsMinimum("v0.2.39", "v0.2.40"));
+    assert(!versionMeetsMinimum("v0.2.40", "v1.0.0"));
     assert(!versionMeetsMinimum("v1.0.0-beta.1", "v1.0.0"));
     assert(versionMeetsMinimum("v1.0.0", "v1.0.0-beta.1"));
 

@@ -29,62 +29,42 @@ jobs:
             -o /tmp/corum-scoring-test
           /tmp/corum-scoring-test
 
-  windows:
-    name: Windows v1.0.0
-    runs-on: windows-latest
-    needs:
-      - tests
-    steps:
-      - uses: actions/checkout@v7
-      - name: Set Windows release version
-        shell: pwsh
-        run: |
-          $modJson = "corum-integration-mod/mod.json"
-          $cmake = "corum-integration-mod/CMakeLists.txt"
-          (Get-Content $modJson -Raw).Replace('"version": "v0.2.40"', '"version": "v1.0.0"') | Set-Content $modJson -NoNewline
-          (Get-Content $cmake -Raw).Replace('project(CorumIntegration VERSION 0.2.40)', 'project(CorumIntegration VERSION 1.0.0)') | Set-Content $cmake -NoNewline
-          if (-not (Select-String -Path $modJson -SimpleMatch '"version": "v1.0.0"')) { throw "Windows mod version was not updated" }
-          if (-not (Select-String -Path $cmake -SimpleMatch 'VERSION 1.0.0')) { throw "Windows CMake version was not updated" }
-      - name: Build Windows package
-        id: build
-        uses: geode-sdk/build-geode-mod@main
-        with:
-          path: corum-integration-mod
-          target: Win64
-      - uses: actions/upload-artifact@v7
-        with:
-          name: Corum-Integration-Windows-v1.0.0
-          path: ${{ steps.build.outputs.build-output }}
-
-  android-build:
+  build:
     strategy:
       fail-fast: false
       matrix:
-        target:
-          - Android32
-          - Android64
-    name: ${{ matrix.target }} v0.2.40
-    runs-on: ubuntu-latest
+        config:
+          - name: Windows
+            os: windows-latest
+            target: Win64
+          - name: Android32
+            os: ubuntu-latest
+            target: Android32
+          - name: Android64
+            os: ubuntu-latest
+            target: Android64
+    name: ${{ matrix.config.name }} v1.0.0
+    runs-on: ${{ matrix.config.os }}
     needs:
       - tests
     steps:
       - uses: actions/checkout@v7
-      - name: Build Android package
+      - name: Build platform package
         uses: geode-sdk/build-geode-mod@main
         with:
           path: corum-integration-mod
-          target: ${{ matrix.target }}
+          target: ${{ matrix.config.target }}
           combine: true
 
-  android-package:
-    name: Package Android v0.2.40
+  package:
+    name: Package v1.0.0
     runs-on: ubuntu-latest
     needs:
-      - android-build
+      - build
     steps:
       - uses: geode-sdk/build-geode-mod/combine@main
         id: build
       - uses: actions/upload-artifact@v7
         with:
-          name: Corum-Integration-Android-v0.2.40
+          name: Corum-Integration-v1.0.0
           path: ${{ steps.build.outputs.build-output }}

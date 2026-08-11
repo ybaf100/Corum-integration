@@ -50,7 +50,7 @@ API 2.23의 `Records`에는 `맵 코드` 바로 오른쪽에 `맵 제목` 열이
 | 플랫폼 | 최소 지원 버전 | 최신 버전 | 업데이트 URL | 버전 검사 활성 |
 | --- | --- | --- | --- | --- |
 | Windows | `v1.0.0` | `v1.0.0` | 공식 GitHub Releases 주소 | `TRUE` |
-| Android | `v0.2.40` | `v0.2.40` | 공식 GitHub Releases 주소 | `TRUE` |
+| Android | `v1.0.0` | `v1.0.0` | 공식 GitHub Releases 주소 | `TRUE` |
 
 `최소 지원 버전`보다 낮은 모드는 맵 목록과 레벨 정보를 계속 조회할 수 있지만,
 `record`와 `batchRecords` 제출은 `CLIENT_OUTDATED`로 거절된다. 모드도 같은 정책을
@@ -63,6 +63,10 @@ API 2.23의 `Records`에는 `맵 코드` 바로 오른쪽에 `맵 제목` 열이
 `v1.2.3` 형식으로 입력한다. 업데이트 URL은 안전을 위해
 `https://github.com/ybaf100/Corum-integration/releases` 아래 주소만 클라이언트에
 전달한다.
+
+v1.0.0 통합 출시용 `Code.gs`에서 `setupCorumIntegration()`을 실행하면, 이전 코드가
+만든 Android 기본값 `v0.2.40`/`v0.2.40` 행은 `v1.0.0`/`v1.0.0`으로 자동
+이행된다. 운영자가 그 행을 다른 값으로 직접 바꿨다면 덮어쓰지 않는다.
 
 ## 자동 End Screen 증거
 

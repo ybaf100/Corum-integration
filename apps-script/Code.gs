@@ -30,8 +30,8 @@ var CORUM_CLIENT_VERSION_DEFAULTS = Object.freeze([
   ]),
   Object.freeze([
     "Android",
-    "v0.2.40",
-    "v0.2.40",
+    "v1.0.0",
+    "v1.0.0",
     "https://github.com/ybaf100/Corum-integration/releases/latest",
     true,
   ]),
@@ -2937,7 +2937,46 @@ function ensureClientVersionsSheet_() {
     sheet.appendRow(Array.prototype.slice.call(row));
     existingPlatforms[platform] = true;
   });
+  migrateAndroidV100ClientPolicy_(sheet);
   return sheet;
+}
+
+/**
+ * v1.0.0 통합 출시 전에 생성된 기본 Android 정책만 새 정식 버전으로 올린다.
+ * 운영자가 다른 버전으로 직접 바꾼 행은 덮어쓰지 않는다.
+ */
+function migrateAndroidV100ClientPolicy_(sheet) {
+  if (!sheet || sheet.getLastRow() < 2) return;
+
+  var values = sheet.getDataRange().getValues();
+  var header = values[0];
+  var platformColumn = findOptionalHeaderIndex_(header, ["플랫폼", "Platform"]);
+  var minimumColumn = findOptionalHeaderIndex_(
+    header,
+    ["최소 지원 버전", "Minimum Supported Version", "Minimum Version"],
+  );
+  var latestColumn = findOptionalHeaderIndex_(
+    header,
+    ["최신 버전", "Latest Version"],
+  );
+  if (platformColumn === -1 || minimumColumn === -1) return;
+
+  for (var rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
+    var row = values[rowIndex];
+    if (normalizeClientPlatform_(row[platformColumn]) !== "android") continue;
+
+    var minimum = String(row[minimumColumn] == null ? "" : row[minimumColumn]).trim();
+    var latest = latestColumn === -1
+      ? ""
+      : String(row[latestColumn] == null ? "" : row[latestColumn]).trim();
+    if (minimum !== "v0.2.40") continue;
+    if (latest && latest !== "v0.2.40" && latest !== "v1.0.0") continue;
+
+    sheet.getRange(rowIndex + 1, minimumColumn + 1).setValue("v1.0.0");
+    if (latestColumn !== -1) {
+      sheet.getRange(rowIndex + 1, latestColumn + 1).setValue("v1.0.0");
+    }
+  }
 }
 
 function normalizeClientPlatform_(value) {

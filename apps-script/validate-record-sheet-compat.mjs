@@ -213,6 +213,29 @@ const spreadsheet = new MockSpreadsheet([
       "2026-07-28T09:39:19.413Z",
     ],
   ]),
+  new MockSheet("Corum Client Versions", [
+    [
+      "플랫폼",
+      "최소 지원 버전",
+      "최신 버전",
+      "업데이트 URL",
+      "버전 검사 활성",
+    ],
+    [
+      "Windows",
+      "v1.0.0",
+      "v1.0.0",
+      "https://github.com/ybaf100/Corum-integration/releases/latest",
+      true,
+    ],
+    [
+      "Android",
+      "v0.2.40",
+      "v0.2.40",
+      "https://github.com/ybaf100/Corum-integration/releases/latest",
+      true,
+    ],
+  ]),
   new MockSheet("CorumClears", [
     clearHeaders,
     [
@@ -457,7 +480,8 @@ const listPayload = JSON.parse(
 assert.equal(listPayload.ok, true);
 assert.match(listPayload.evidenceGeneration, /^\d+$/);
 assert.equal(listPayload.clientPolicy.windows.minimumSupportedVersion, "v1.0.0");
-assert.equal(listPayload.clientPolicy.android.minimumSupportedVersion, "v0.2.40");
+assert.equal(listPayload.clientPolicy.android.minimumSupportedVersion, "v1.0.0");
+assert.equal(listPayload.clientPolicy.android.latestVersion, "v1.0.0");
 assert.equal(listPayload.clientPolicy.windows.enforcementEnabled, true);
 const originalEvidenceGeneration = listPayload.evidenceGeneration;
 
@@ -477,12 +501,12 @@ assert.equal(
 );
 assert.equal(context.clientVersionRejection_({
   platform: "Android64",
-  modVersion: "v0.2.40",
+  modVersion: "v1.0.0",
 }), null);
 assert.equal(
   JSON.parse(context.clientVersionRejection_({
     platform: "Android32",
-    modVersion: "v0.2.39",
+    modVersion: "v0.2.40",
   }).text).error.code,
   "CLIENT_OUTDATED",
 );

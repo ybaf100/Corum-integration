@@ -4,10 +4,9 @@ An older compiled binary is intentionally not included because it does not
 contain the current evidence, client-version, and submission-gating fixes.
 
 Run `.github/workflows/build-mod.yml` from the repository root. It publishes
-two GitHub Actions artifacts:
+one GitHub Actions artifact:
 
-- `Corum-Integration-Windows-v1.0.0`
-- `Corum-Integration-Android-v0.2.40`
+- `Corum-Integration-v1.0.0`
 
-The Android artifact combines Android32 and Android64. Windows is kept separate
-because its release version is `v1.0.0` while Android remains `v0.2.40`.
+The artifact combines Win64, Android32, and Android64 binaries in one `.geode`
+package with shared `v1.0.0` metadata.
