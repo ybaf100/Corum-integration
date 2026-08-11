@@ -1,12 +1,36 @@
 name: Build Corum Integration
 
 on:
+  workflow_call:
   workflow_dispatch:
   push:
     branches:
       - "**"
 
+permissions:
+  contents: read
+
 jobs:
+  metadata:
+    name: Read mod version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Read and validate mod.json version
+        id: version
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const manifest = JSON.parse(fs.readFileSync('corum-integration-mod/mod.json', 'utf8'));
+          if (!/^v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(manifest.version)) {
+            throw new Error(`Invalid mod.json version: ${manifest.version}`);
+          }
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${manifest.version}\n`);
+          NODE
+
   tests:
     name: Validate policy and API
     runs-on: ubuntu-latest
@@ -43,9 +67,10 @@ jobs:
           - name: Android64
             os: ubuntu-latest
             target: Android64
-    name: ${{ matrix.config.name }} v1.0.0
+    name: ${{ matrix.config.name }} ${{ needs.metadata.outputs.version }}
     runs-on: ${{ matrix.config.os }}
     needs:
+      - metadata
       - tests
     steps:
       - uses: actions/checkout@v7
@@ -57,14 +82,45 @@ jobs:
           combine: true
 
   package:
-    name: Package v1.0.0
+    name: Package ${{ needs.metadata.outputs.version }}
     runs-on: ubuntu-latest
     needs:
+      - metadata
       - build
     steps:
       - uses: geode-sdk/build-geode-mod/combine@main
         id: build
+      - name: Normalize and validate package
+        env:
+          BUILD_OUTPUT: ${{ steps.build.outputs.build-output }}
+          MOD_VERSION: ${{ needs.metadata.outputs.version }}
+        shell: bash
+        run: |
+          mkdir -p dist
+          mapfile -t COMBINED_PACKAGES < <(find "$BUILD_OUTPUT" -maxdepth 1 -type f -name '*.geode' -print)
+          if [[ ${#COMBINED_PACKAGES[@]} -ne 1 ]]; then
+            echo "Expected one combined .geode package, found ${#COMBINED_PACKAGES[@]}" >&2
+            printf '%s\n' "${COMBINED_PACKAGES[@]}" >&2
+            exit 1
+          fi
+          cp "${COMBINED_PACKAGES[0]}" "dist/Corum-Integration-$MOD_VERSION.geode"
+          python3 - "dist/Corum-Integration-$MOD_VERSION.geode" "$MOD_VERSION" <<'PY'
+          import json
+          import sys
+          import zipfile
+
+          package_path, expected_version = sys.argv[1:]
+          with zipfile.ZipFile(package_path) as package:
+              manifest = json.loads(package.read("mod.json"))
+          if manifest.get("id") != "hwanhee1.corum_integration":
+              raise SystemExit(f"Unexpected Mod ID: {manifest.get('id')}")
+          if manifest.get("version") != expected_version:
+              raise SystemExit(
+                  f"Package version {manifest.get('version')} does not match {expected_version}"
+              )
+          PY
       - uses: actions/upload-artifact@v7
         with:
-          name: Corum-Integration-v1.0.0
-          path: ${{ steps.build.outputs.build-output }}
+          name: Corum-Integration-${{ needs.metadata.outputs.version }}
+          path: dist/Corum-Integration-${{ needs.metadata.outputs.version }}.geode
+          if-no-files-found: error

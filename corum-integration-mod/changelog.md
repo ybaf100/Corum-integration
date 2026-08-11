@@ -1,5 +1,9 @@
-# Windows v1\.0\.0 / Android v0\.2\.40
+# v1\.0\.0
 
+- Windows용 단일 파일 자동 설치기·업데이터·런처와 수동 설치용 `.geode`
+  패키지를 GitHub Release에 함께 게시하는 배포 흐름을 추가합니다\.
+- 설치기는 Steam의 기본·추가 Library에서 Geometry Dash를 찾고, `.geode`
+  내부 Mod ID를 기준으로 기존 Corum Integration만 안전하게 교체합니다\.
 - 플랫폼별 최소 지원 버전 정책을 시작 시 맵 목록과 함께 한 번만
   받아옵니다\.
 - 지원 종료 버전에서는 `C Integration is outdated!` 경고를 표시하되

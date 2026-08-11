@@ -1,0 +1,785 @@
+using System.Diagnostics;
+using CorumIntegrationInstaller.Core;
+
+namespace CorumIntegrationInstaller;
+
+internal sealed class MainForm : Form
+{
+    private static readonly Color SuccessColor = Color.FromArgb(30, 126, 71);
+    private static readonly Color ErrorColor = Color.FromArgb(181, 45, 45);
+    private static readonly Color MutedColor = Color.FromArgb(92, 101, 112);
+
+    private readonly GeometryDashLocator _geometryDashLocator;
+    private readonly SettingsStore _settingsStore;
+    private readonly GeodePackageInspector _packageInspector;
+    private readonly GitHubReleaseClient _releaseClient;
+    private readonly InstallationService _installationService;
+    private readonly IGeometryDashProcessService _processService;
+
+    private readonly Label _geometryDashStatus = CreateValueLabel();
+    private readonly Label _geodeStatus = CreateValueLabel();
+    private readonly Label _installedStatus = CreateValueLabel();
+    private readonly Label _latestStatus = CreateValueLabel();
+    private readonly Label _statusMessage = new();
+    private readonly Button _browseButton = new();
+    private readonly Button _geodeButton = new();
+    private readonly Button _installButton = new();
+    private readonly Button _launchButton = new();
+    private readonly Button _refreshButton = new();
+    private readonly Button _privacyDetailsButton = new();
+    private readonly CheckBox _privacyAcknowledgement = new();
+    private readonly ProgressBar _progressBar = new();
+
+    private string? _geometryDashDirectory;
+    private bool _geodeInstalled;
+    private bool _busy;
+    private bool _replacementInProgress;
+    private ReleaseInfo? _latestRelease;
+    private IReadOnlyList<GeodePackageMetadata> _installedPackages = Array.Empty<GeodePackageMetadata>();
+
+    public MainForm(
+        GeometryDashLocator geometryDashLocator,
+        SettingsStore settingsStore,
+        GeodePackageInspector packageInspector,
+        GitHubReleaseClient releaseClient,
+        InstallationService installationService,
+        IGeometryDashProcessService processService)
+    {
+        _geometryDashLocator = geometryDashLocator;
+        _settingsStore = settingsStore;
+        _packageInspector = packageInspector;
+        _releaseClient = releaseClient;
+        _installationService = installationService;
+        _processService = processService;
+
+        InitializeWindow();
+        BuildLayout();
+        WireEvents();
+    }
+
+    protected override async void OnShown(EventArgs eventArgs)
+    {
+        base.OnShown(eventArgs);
+        await RefreshStateAsync(refreshRelease: true);
+    }
+
+    protected override void OnFormClosing(FormClosingEventArgs eventArgs)
+    {
+        if (_replacementInProgress && eventArgs.CloseReason == CloseReason.UserClosing)
+        {
+            eventArgs.Cancel = true;
+            MessageBox.Show(
+                this,
+                "Please wait for the current check or installation step to finish.",
+                "Corum Integration Installer",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return;
+        }
+
+        base.OnFormClosing(eventArgs);
+    }
+
+    private void InitializeWindow()
+    {
+        Text = "Corum Integration Installer";
+        StartPosition = FormStartPosition.CenterScreen;
+        FormBorderStyle = FormBorderStyle.FixedSingle;
+        MaximizeBox = false;
+        MinimizeBox = true;
+        ShowIcon = false;
+        ClientSize = new Size(680, 620);
+        MinimumSize = new Size(696, 659);
+        MaximumSize = MinimumSize;
+        AutoScaleMode = AutoScaleMode.Dpi;
+        Font = new Font("Segoe UI", 9F);
+        BackColor = Color.FromArgb(248, 249, 251);
+    }
+
+    private void BuildLayout()
+    {
+        var root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(28, 24, 28, 20),
+            ColumnCount = 1,
+            RowCount = 8,
+            BackColor = BackColor
+        };
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 66));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 202));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 142));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        root.Controls.Add(CreateHeader(), 0, 0);
+        root.Controls.Add(CreateStatusPanel(), 0, 1);
+        root.Controls.Add(CreateActionPanel(), 0, 2);
+        root.Controls.Add(CreateSeparator(), 0, 3);
+        root.Controls.Add(CreatePrivacyPanel(), 0, 4);
+
+        _progressBar.Dock = DockStyle.Fill;
+        _progressBar.Style = ProgressBarStyle.Marquee;
+        _progressBar.MarqueeAnimationSpeed = 0;
+        _progressBar.Visible = false;
+        root.Controls.Add(_progressBar, 0, 5);
+
+        _statusMessage.Dock = DockStyle.Fill;
+        _statusMessage.ForeColor = MutedColor;
+        _statusMessage.TextAlign = ContentAlignment.MiddleLeft;
+        _statusMessage.AutoEllipsis = true;
+        root.Controls.Add(_statusMessage, 0, 6);
+
+        Controls.Add(root);
+    }
+
+    private Control CreateHeader()
+    {
+        var panel = new Panel { Dock = DockStyle.Fill };
+        var title = new Label
+        {
+            Text = "Corum Integration",
+            Font = new Font("Segoe UI Semibold", 20F, FontStyle.Bold),
+            AutoSize = true,
+            Location = new Point(0, 0),
+            ForeColor = Color.FromArgb(30, 34, 40)
+        };
+        var subtitle = new Label
+        {
+            Text = $"{InstallerVersion.GetDisplayVersion()} Installer · Updater · Launcher",
+            AutoSize = true,
+            Location = new Point(2, 42),
+            ForeColor = MutedColor
+        };
+        panel.Controls.Add(title);
+        panel.Controls.Add(subtitle);
+        return panel;
+    }
+
+    private Control CreateStatusPanel()
+    {
+        var panel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = Color.White,
+            Padding = new Padding(18, 12, 18, 12),
+            ColumnCount = 3,
+            RowCount = 4,
+            CellBorderStyle = TableLayoutPanelCellBorderStyle.Single
+        };
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 154));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 104));
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 43));
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 43));
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 43));
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 43));
+
+        _browseButton.Text = "Browse…";
+        ConfigureSmallButton(_browseButton);
+        _geodeButton.Text = "Get Geode";
+        ConfigureSmallButton(_geodeButton);
+
+        AddStatusRow(panel, 0, "Geometry Dash", _geometryDashStatus, _browseButton);
+        AddStatusRow(panel, 1, "Geode", _geodeStatus, _geodeButton);
+        AddStatusRow(panel, 2, "Corum Integration", _installedStatus, null);
+        AddStatusRow(panel, 3, "Latest Release", _latestStatus, null);
+        return panel;
+    }
+
+    private Control CreateActionPanel()
+    {
+        var panel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(0, 10, 0, 2),
+            ColumnCount = 3,
+            RowCount = 1
+        };
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 18));
+
+        _installButton.Text = "Install";
+        _installButton.Dock = DockStyle.Fill;
+        _installButton.Font = new Font("Segoe UI Semibold", 9.5F, FontStyle.Bold);
+
+        _launchButton.Text = "Launch Geometry Dash";
+        _launchButton.Dock = DockStyle.Fill;
+        _launchButton.Margin = new Padding(8, 0, 0, 0);
+
+        _refreshButton.Text = "Refresh";
+        _refreshButton.Dock = DockStyle.Fill;
+        _refreshButton.Margin = new Padding(8, 0, 0, 0);
+
+        panel.Controls.Add(_installButton, 0, 0);
+        panel.Controls.Add(_launchButton, 1, 0);
+        panel.Controls.Add(_refreshButton, 2, 0);
+        return panel;
+    }
+
+    private static Control CreateSeparator() => new Panel
+    {
+        Dock = DockStyle.Top,
+        Height = 1,
+        Margin = new Padding(0, 12, 0, 0),
+        BackColor = Color.FromArgb(218, 221, 226)
+    };
+
+    private Control CreatePrivacyPanel()
+    {
+        var panel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 4,
+            Padding = new Padding(0, 2, 0, 0)
+        };
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112));
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+
+        var heading = new Label
+        {
+            Text = "Privacy & record verification",
+            Dock = DockStyle.Fill,
+            Font = new Font("Segoe UI Semibold", 10.5F, FontStyle.Bold),
+            ForeColor = Color.FromArgb(35, 39, 45),
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+        panel.SetColumnSpan(heading, 2);
+
+        var summary = new Label
+        {
+            Text = "Record submission can include Geometry Dash account, map/record and version data, loaded non-built-in Geode mod IDs/versions, and an eligible End Level PNG. Nothing is uploaded at clear time; available data is sent only when you press Submit or Submit All.",
+            Dock = DockStyle.Fill,
+            ForeColor = MutedColor
+        };
+        panel.SetColumnSpan(summary, 2);
+
+        var scope = new Label
+        {
+            Text = "Other apps, desktop, notifications and OS UI are not captured. Record submission can be disabled in Geode settings.",
+            Dock = DockStyle.Fill,
+            ForeColor = MutedColor,
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+
+        _privacyDetailsButton.Text = "View details";
+        _privacyDetailsButton.Dock = DockStyle.Fill;
+        _privacyDetailsButton.Margin = new Padding(8, 2, 0, 2);
+
+        _privacyAcknowledgement.Text = "I have reviewed the privacy and record verification information above.";
+        _privacyAcknowledgement.Dock = DockStyle.Fill;
+        _privacyAcknowledgement.AutoSize = false;
+        panel.SetColumnSpan(_privacyAcknowledgement, 2);
+
+        panel.Controls.Add(heading, 0, 0);
+        panel.Controls.Add(summary, 0, 1);
+        panel.Controls.Add(scope, 0, 2);
+        panel.Controls.Add(_privacyDetailsButton, 1, 2);
+        panel.Controls.Add(_privacyAcknowledgement, 0, 3);
+        return panel;
+    }
+
+    private void WireEvents()
+    {
+        _browseButton.Click += BrowseButtonOnClick;
+        _geodeButton.Click += (_, _) => OpenExternalUrl(AppConstants.GeodeInstallUrl);
+        _refreshButton.Click += async (_, _) => await RefreshStateAsync(refreshRelease: true);
+        _installButton.Click += InstallButtonOnClick;
+        _launchButton.Click += LaunchButtonOnClick;
+        _privacyDetailsButton.Click += (_, _) =>
+        {
+            using var dialog = new PrivacyDialog();
+            dialog.ShowDialog(this);
+        };
+        _privacyAcknowledgement.CheckedChanged += (_, _) => UpdateControls();
+    }
+
+    private async Task RefreshStateAsync(bool refreshRelease)
+    {
+        SetBusy(true, "Checking Geometry Dash, Geode and Corum Integration…");
+        InstallerException? localError = null;
+        InstallerException? releaseError = null;
+
+        try
+        {
+            var preferredDirectory = _geometryDashDirectory ?? _settingsStore.Load().GeometryDashDirectory;
+            var localTask = Task.Run(() => DetectLocalState(preferredDirectory));
+            var releaseTask = refreshRelease || _latestRelease is null
+                ? _releaseClient.GetLatestReleaseAsync()
+                : null;
+
+            LocalState localState;
+            try
+            {
+                localState = await localTask;
+            }
+            catch (InstallerException exception)
+            {
+                localError = exception;
+                localState = new LocalState(null, false, Array.Empty<GeodePackageMetadata>());
+            }
+
+            try
+            {
+                if (releaseTask is not null)
+                {
+                    _latestRelease = await releaseTask;
+                }
+            }
+            catch (InstallerException exception)
+            {
+                releaseError = exception;
+                _latestRelease = null;
+            }
+
+            _geometryDashDirectory = localState.GeometryDashDirectory;
+            _geodeInstalled = localState.GeodeInstalled;
+            _installedPackages = localState.InstalledPackages;
+            UpdateStatusLabels();
+
+            if (localError is not null)
+            {
+                ShowStatus(localError.Message, isError: true);
+            }
+            else if (_geometryDashDirectory is null)
+            {
+                ShowStatus("Geometry Dash was not found. Choose its installation folder.", isError: true);
+            }
+            else if (!_geodeInstalled)
+            {
+                ShowStatus("Geode is not installed. Install Geode before installing Corum Integration.", isError: true);
+            }
+            else if (releaseError is not null)
+            {
+                ShowStatus(releaseError.Message, isError: true);
+            }
+            else
+            {
+                ShowStatus("Ready.", isError: false);
+            }
+        }
+        catch (Exception)
+        {
+            ShowStatus("The installer status could not be refreshed. Check the selected folder and network connection, then try again.", isError: true);
+            UpdateStatusLabels();
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
+
+    private LocalState DetectLocalState(string? preferredDirectory)
+    {
+        var geometryDashDirectory = _geometryDashLocator.FindInstalledDirectory(preferredDirectory);
+        if (geometryDashDirectory is null)
+        {
+            return new LocalState(null, false, Array.Empty<GeodePackageMetadata>());
+        }
+
+        var modsDirectory = Path.Combine(geometryDashDirectory, "geode", "mods");
+        var geodeInstalled = Directory.Exists(modsDirectory);
+        var installedPackages = geodeInstalled
+            ? _packageInspector.FindInstalledCorumPackages(modsDirectory)
+            : Array.Empty<GeodePackageMetadata>();
+        return new LocalState(geometryDashDirectory, geodeInstalled, installedPackages);
+    }
+
+    private async void BrowseButtonOnClick(object? sender, EventArgs eventArgs)
+    {
+        using var dialog = new FolderBrowserDialog
+        {
+            Description = "Select the Geometry Dash installation folder containing GeometryDash.exe.",
+            UseDescriptionForTitle = true,
+            ShowNewFolderButton = false,
+            InitialDirectory = _geometryDashDirectory ?? string.Empty
+        };
+
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        if (!GeometryDashLocator.IsValidGeometryDashDirectory(dialog.SelectedPath))
+        {
+            ShowInstallerError(new InstallerException(
+                InstallerErrorCode.InvalidGeometryDashFolder,
+                "The selected folder is not a valid Geometry Dash folder because GeometryDash.exe was not found."));
+            return;
+        }
+
+        _geometryDashDirectory = Path.GetFullPath(dialog.SelectedPath);
+        try
+        {
+            _settingsStore.Save(new InstallerSettings(_geometryDashDirectory));
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            ShowStatus("Geometry Dash was found, but the selected path could not be saved for the next run.", isError: true);
+        }
+
+        await RefreshStateAsync(refreshRelease: _latestRelease is null);
+    }
+
+    private async void InstallButtonOnClick(object? sender, EventArgs eventArgs)
+    {
+        if (!_privacyAcknowledgement.Checked)
+        {
+            MessageBox.Show(
+                this,
+                "Review and acknowledge the privacy and record verification information before installing.",
+                "Privacy information",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return;
+        }
+
+        var geometryDashDirectory = _geometryDashDirectory;
+        var latestRelease = _latestRelease;
+        if (geometryDashDirectory is null || !_geodeInstalled || latestRelease is null)
+        {
+            ShowStatus("Installation prerequisites are not ready. Refresh the status and try again.", isError: true);
+            return;
+        }
+
+        TemporaryDownload? download = null;
+        SetBusy(true, $"Downloading {latestRelease.Asset.Name}…");
+        try
+        {
+            var progress = new Progress<DownloadProgress>(UpdateDownloadProgress);
+            download = await _releaseClient.DownloadPackageAsync(latestRelease, progress);
+            var downloadedFilePath = download.FilePath;
+
+            SetMarqueeProgress("Validating the downloaded Geode package…");
+            await Task.Run(() => _packageInspector.ValidateCorumPackage(downloadedFilePath, latestRelease.Version));
+
+            SetMarqueeProgress("Installing Corum Integration safely…");
+            InstallationResult result;
+            _replacementInProgress = true;
+            try
+            {
+                result = await Task.Run(() => _installationService.InstallOrUpdate(
+                    downloadedFilePath,
+                    geometryDashDirectory,
+                    latestRelease.Version));
+            }
+            finally
+            {
+                _replacementInProgress = false;
+            }
+
+            await RefreshStateAsync(refreshRelease: false);
+            MessageBox.Show(
+                this,
+                $"Corum Integration {result.InstalledVersion} was installed successfully.",
+                "Installation complete",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            ShowStatus("Installation complete. You can launch Geometry Dash.", isError: false);
+        }
+        catch (InstallerException exception)
+        {
+            ShowInstallerError(exception);
+        }
+        catch (Exception)
+        {
+            ShowInstallerError(new InstallerException(
+                InstallerErrorCode.InstallFailed,
+                "An unexpected error prevented Corum Integration from being installed. The existing installation was preserved whenever possible."));
+        }
+        finally
+        {
+            download?.Dispose();
+            SetBusy(false);
+        }
+    }
+
+    private void LaunchButtonOnClick(object? sender, EventArgs eventArgs)
+    {
+        var geometryDashDirectory = _geometryDashDirectory;
+        if (geometryDashDirectory is null)
+        {
+            ShowStatus("Geometry Dash was not found.", isError: true);
+            return;
+        }
+
+        if (_processService.IsRunning())
+        {
+            MessageBox.Show(
+                this,
+                "Geometry Dash is already running.",
+                "Geometry Dash",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = Path.Combine(geometryDashDirectory, AppConstants.GeometryDashExecutableName),
+                WorkingDirectory = geometryDashDirectory,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            ShowStatus("Geometry Dash could not be launched from the detected folder.", isError: true);
+        }
+    }
+
+    private void UpdateStatusLabels()
+    {
+        if (_geometryDashDirectory is null)
+        {
+            SetValue(_geometryDashStatus, "Not found", success: false);
+        }
+        else
+        {
+            SetValue(_geometryDashStatus, $"Found · {_geometryDashDirectory}", success: true);
+        }
+
+        SetValue(_geodeStatus, _geodeInstalled ? "Installed" : "Not installed", _geodeInstalled);
+
+        var installedPackage = SelectHighestInstalledPackage();
+        if (installedPackage is null)
+        {
+            SetValue(_installedStatus, "Not installed", success: false);
+        }
+        else
+        {
+            var duplicateSuffix = _installedPackages.Count > 1
+                ? $" · {_installedPackages.Count} matching packages"
+                : string.Empty;
+            SetValue(_installedStatus, $"Installed: {installedPackage.Version}{duplicateSuffix}", success: true);
+        }
+
+        if (_latestRelease is null)
+        {
+            SetValue(_latestStatus, "Unavailable", success: false);
+        }
+        else
+        {
+            SetValue(_latestStatus, $"Latest: {_latestRelease.Version}", success: true);
+        }
+
+        UpdateControls();
+    }
+
+    private void UpdateControls()
+    {
+        var installedPackage = SelectHighestInstalledPackage();
+        var installedVersionValid = installedPackage is not null && SemanticVersion.TryParse(installedPackage.Version, out var installedVersion);
+        var latestVersionValid = _latestRelease is not null && SemanticVersion.TryParse(_latestRelease.Version, out var latestVersion);
+        var newerThanRelease = installedVersionValid && latestVersionValid && installedVersion! > latestVersion!;
+
+        if (installedPackage is null)
+        {
+            _installButton.Text = "Install";
+        }
+        else if (installedVersionValid && latestVersionValid && installedVersion! < latestVersion!)
+        {
+            _installButton.Text = "Update";
+        }
+        else if (newerThanRelease)
+        {
+            _installButton.Text = "Newer version installed";
+        }
+        else
+        {
+            _installButton.Text = "Reinstall";
+        }
+
+        _installButton.Enabled = !_busy &&
+                                 !newerThanRelease &&
+                                 _privacyAcknowledgement.Checked &&
+                                 _geometryDashDirectory is not null &&
+                                 _geodeInstalled &&
+                                 _latestRelease is not null;
+        _launchButton.Enabled = !_busy && _geometryDashDirectory is not null && installedPackage is not null;
+        _browseButton.Enabled = !_busy;
+        _geodeButton.Enabled = !_busy;
+        _refreshButton.Enabled = !_busy;
+        _privacyDetailsButton.Enabled = !_busy;
+        _privacyAcknowledgement.Enabled = !_busy;
+    }
+
+    private GeodePackageMetadata? SelectHighestInstalledPackage()
+    {
+        GeodePackageMetadata? selected = null;
+        SemanticVersion? selectedVersion = null;
+        foreach (var package in _installedPackages)
+        {
+            if (!SemanticVersion.TryParse(package.Version, out var version))
+            {
+                selected ??= package;
+                continue;
+            }
+
+            if (selectedVersion is null || version > selectedVersion)
+            {
+                selected = package;
+                selectedVersion = version;
+            }
+        }
+
+        return selected;
+    }
+
+    private void SetBusy(bool busy, string? message = null)
+    {
+        _busy = busy;
+        _progressBar.Visible = busy;
+        _progressBar.Style = ProgressBarStyle.Marquee;
+        _progressBar.MarqueeAnimationSpeed = busy ? 24 : 0;
+        if (message is not null)
+        {
+            ShowStatus(message, isError: false);
+        }
+
+        UseWaitCursor = busy;
+        UpdateControls();
+    }
+
+    private void SetMarqueeProgress(string message)
+    {
+        _progressBar.Style = ProgressBarStyle.Marquee;
+        _progressBar.MarqueeAnimationSpeed = 24;
+        ShowStatus(message, isError: false);
+    }
+
+    private void UpdateDownloadProgress(DownloadProgress progress)
+    {
+        if (progress.TotalBytes is > 0)
+        {
+            _progressBar.Style = ProgressBarStyle.Continuous;
+            _progressBar.MarqueeAnimationSpeed = 0;
+            _progressBar.Minimum = 0;
+            _progressBar.Maximum = 100;
+            _progressBar.Value = Math.Clamp((int)(progress.BytesReceived * 100 / progress.TotalBytes.Value), 0, 100);
+            ShowStatus($"Downloading… {_progressBar.Value}%", isError: false);
+        }
+        else
+        {
+            SetMarqueeProgress($"Downloading… {progress.BytesReceived / 1024:N0} KB");
+        }
+    }
+
+    private void ShowInstallerError(InstallerException exception)
+    {
+        ShowStatus(exception.Message, isError: true);
+        MessageBox.Show(
+            this,
+            exception.Message,
+            GetErrorTitle(exception.Code),
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Error);
+    }
+
+    private void ShowStatus(string message, bool isError)
+    {
+        _statusMessage.Text = message;
+        _statusMessage.ForeColor = isError ? ErrorColor : MutedColor;
+    }
+
+    private static void OpenExternalUrl(string url)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            MessageBox.Show(
+                $"Could not open the browser. Open this address manually:\n{url}",
+                "Open link",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+    }
+
+    private static string GetErrorTitle(InstallerErrorCode code) => code switch
+    {
+        InstallerErrorCode.GeometryDashNotFound => "Geometry Dash not found",
+        InstallerErrorCode.InvalidGeometryDashFolder => "Invalid Geometry Dash folder",
+        InstallerErrorCode.GeodeNotInstalled => "Geode not installed",
+        InstallerErrorCode.GitHubApiFailure => "GitHub connection failed",
+        InstallerErrorCode.ReleaseNotFound => "Release not found",
+        InstallerErrorCode.ReleaseAssetNotFound => "Release package not found",
+        InstallerErrorCode.DownloadFailed => "Download failed",
+        InstallerErrorCode.InvalidGeodeArchive => "Invalid Geode package",
+        InstallerErrorCode.ModJsonMissing => "mod.json missing",
+        InstallerErrorCode.InvalidModJson => "Invalid mod.json",
+        InstallerErrorCode.ModIdMismatch => "Wrong Mod ID",
+        InstallerErrorCode.ModVersionMismatch => "Version mismatch",
+        InstallerErrorCode.GeometryDashRunning => "Geometry Dash is running",
+        InstallerErrorCode.FileCollision => "File collision",
+        InstallerErrorCode.AccessDenied => "File access denied",
+        _ => "Installation failed"
+    };
+
+    private static Label CreateValueLabel() => new()
+    {
+        Dock = DockStyle.Fill,
+        AutoEllipsis = true,
+        TextAlign = ContentAlignment.MiddleLeft,
+        ForeColor = MutedColor,
+        Padding = new Padding(8, 0, 8, 0)
+    };
+
+    private static void AddStatusRow(
+        TableLayoutPanel panel,
+        int row,
+        string heading,
+        Label value,
+        Button? button)
+    {
+        var headingLabel = new Label
+        {
+            Text = heading,
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold),
+            Padding = new Padding(8, 0, 8, 0)
+        };
+        panel.Controls.Add(headingLabel, 0, row);
+        panel.Controls.Add(value, 1, row);
+
+        if (button is null)
+        {
+            var spacer = new Panel { Dock = DockStyle.Fill };
+            panel.Controls.Add(spacer, 2, row);
+        }
+        else
+        {
+            panel.Controls.Add(button, 2, row);
+        }
+    }
+
+    private static void ConfigureSmallButton(Button button)
+    {
+        button.Dock = DockStyle.Fill;
+        button.Margin = new Padding(8, 6, 8, 6);
+    }
+
+    private static void SetValue(Label label, string value, bool success)
+    {
+        label.Text = value;
+        label.ForeColor = success ? SuccessColor : ErrorColor;
+    }
+
+    private sealed record LocalState(
+        string? GeometryDashDirectory,
+        bool GeodeInstalled,
+        IReadOnlyList<GeodePackageMetadata> InstalledPackages);
+}
