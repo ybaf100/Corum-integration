@@ -579,15 +579,32 @@ internal sealed class MainForm : Form
     private void UpdateControls()
     {
         var installedPackage = SelectHighestInstalledPackage();
-        var installedVersionValid = installedPackage is not null && SemanticVersion.TryParse(installedPackage.Version, out var installedVersion);
-        var latestVersionValid = _latestRelease is not null && SemanticVersion.TryParse(_latestRelease.Version, out var latestVersion);
-        var newerThanRelease = installedVersionValid && latestVersionValid && installedVersion! > latestVersion!;
+        SemanticVersion? installedVersion = null;
+        SemanticVersion? latestVersion = null;
+
+        if (installedPackage is not null &&
+            SemanticVersion.TryParse(installedPackage.Version, out var parsedInstalledVersion))
+        {
+            installedVersion = parsedInstalledVersion;
+        }
+
+        if (_latestRelease is not null &&
+            SemanticVersion.TryParse(_latestRelease.Version, out var parsedLatestVersion))
+        {
+            latestVersion = parsedLatestVersion;
+        }
+
+        var newerThanRelease = installedVersion is not null &&
+                               latestVersion is not null &&
+                               installedVersion > latestVersion;
 
         if (installedPackage is null)
         {
             _installButton.Text = "Install";
         }
-        else if (installedVersionValid && latestVersionValid && installedVersion! < latestVersion!)
+        else if (installedVersion is not null &&
+                 latestVersion is not null &&
+                 installedVersion < latestVersion)
         {
             _installButton.Text = "Update";
         }

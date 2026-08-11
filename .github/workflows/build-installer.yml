@@ -56,6 +56,10 @@ jobs:
             -p:DebugType=None `
             -p:DebugSymbols=false
 
+          if ($LASTEXITCODE -ne 0) {
+            throw "dotnet publish failed with exit code $LASTEXITCODE."
+          }
+
           $source = Join-Path $publishDirectory "CorumIntegrationInstaller.exe"
           if (-not (Test-Path $source -PathType Leaf)) {
             throw "Published installer executable was not found: $source"
