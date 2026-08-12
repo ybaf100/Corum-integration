@@ -45,7 +45,7 @@ public sealed class InstallationService
         }
 
         var installedPackages = _packageInspector.FindInstalledCorumPackages(modsDirectory);
-        var targetPath = Path.Combine(modsDirectory, AppConstants.GetReleaseAssetName(downloadedMetadata.Version));
+        var targetPath = Path.Combine(modsDirectory, AppConstants.ReleaseAssetName);
         EnsureTargetDoesNotBelongToAnotherMod(targetPath, installedPackages);
 
         var operationId = Guid.NewGuid().ToString("N");

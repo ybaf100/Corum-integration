@@ -1,4 +1,4 @@
-# v1\.0\.1
+# v1\.0\.2
 
 - iOS arm64 타깃을 CI에서 빌드하고 Win64·Android32·Android64와 하나의
   `.geode` 패키지로 통합하여 iPhone과 iPad에서 Corum Integration을
@@ -11,6 +11,8 @@
   제거합니다\.
 - Release 게시 전에 통합 `.geode`에 Win64, iOS, Android32와 Android64
   바이너리가 모두 들어 있는지 검증합니다\.
+- 빌드 산출물, GitHub Release와 설치 후 패키지 파일명을 Mod ID와 같은
+  `hwanhee1.corum_integration.geode`로 통일합니다\.
 
 # v1\.0\.0
 

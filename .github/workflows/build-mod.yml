@@ -106,8 +106,8 @@ jobs:
             printf '%s\n' "${COMBINED_PACKAGES[@]}" >&2
             exit 1
           fi
-          cp "${COMBINED_PACKAGES[0]}" "dist/Corum-Integration-$MOD_VERSION.geode"
-          python3 - "dist/Corum-Integration-$MOD_VERSION.geode" "$MOD_VERSION" <<'PY'
+          cp "${COMBINED_PACKAGES[0]}" "dist/hwanhee1.corum_integration.geode"
+          python3 - "dist/hwanhee1.corum_integration.geode" "$MOD_VERSION" <<'PY'
           import json
           import sys
           import zipfile
@@ -138,5 +138,5 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: Corum-Integration-${{ needs.metadata.outputs.version }}
-          path: dist/Corum-Integration-${{ needs.metadata.outputs.version }}.geode
+          path: dist/hwanhee1.corum_integration.geode
           if-no-files-found: error

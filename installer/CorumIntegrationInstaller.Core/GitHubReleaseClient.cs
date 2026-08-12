@@ -130,7 +130,7 @@ public sealed class GitHubReleaseClient : IDisposable
             }
 
             var normalizedVersion = releaseVersion.ToNormalizedString();
-            var expectedAssetName = AppConstants.GetReleaseAssetName(normalizedVersion);
+            var expectedAssetName = AppConstants.ReleaseAssetName;
             var asset = release.Assets?.FirstOrDefault(candidate =>
                 candidate.Name.Equals(expectedAssetName, StringComparison.OrdinalIgnoreCase));
             if (asset is null || !Uri.TryCreate(asset.BrowserDownloadUrl, UriKind.Absolute, out var downloadUri))

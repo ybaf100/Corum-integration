@@ -24,21 +24,21 @@ var CORUM_CLIENT_VERSION_DEFAULTS = Object.freeze([
   Object.freeze([
     "Windows",
     "v1.0.0",
-    "v1.0.1",
+    "v1.0.2",
     "https://github.com/ybaf100/Corum-integration/releases/latest",
     true,
   ]),
   Object.freeze([
     "Android",
     "v1.0.0",
-    "v1.0.1",
+    "v1.0.2",
     "https://github.com/ybaf100/Corum-integration/releases/latest",
     true,
   ]),
   Object.freeze([
     "iOS",
-    "v1.0.1",
-    "v1.0.1",
+    "v1.0.2",
+    "v1.0.2",
     "https://github.com/ybaf100/Corum-integration/releases/latest",
     true,
   ]),
@@ -2945,7 +2945,7 @@ function ensureClientVersionsSheet_() {
     existingPlatforms[platform] = true;
   });
   migrateAndroidV100ClientPolicy_(sheet);
-  migrateV101ClientPolicies_(sheet);
+  migrateV102ClientPolicies_(sheet);
   return sheet;
 }
 
@@ -2988,11 +2988,11 @@ function migrateAndroidV100ClientPolicy_(sheet) {
 }
 
 /**
- * v1.0.0 기본 정책을 사용 중인 플랫폼의 최신 버전을 v1.0.1로 올린다.
- * iOS는 v1.0.1에서 처음 지원되므로 최소 지원 버전도 함께 올린다.
+ * v1.0.0 또는 중간 v1.0.1 기본 정책을 사용 중인 플랫폼을 v1.0.2로 올린다.
+ * iOS는 v1.0.2에서 처음 지원되므로 최소 지원 버전도 함께 올린다.
  * 운영자가 직접 수정한 정책 행은 덮어쓰지 않는다.
  */
-function migrateV101ClientPolicies_(sheet) {
+function migrateV102ClientPolicies_(sheet) {
   if (!sheet || sheet.getLastRow() < 2) return;
 
   var values = sheet.getDataRange().getValues();
@@ -3015,13 +3015,16 @@ function migrateV101ClientPolicies_(sheet) {
     var platform = normalizeClientPlatform_(row[platformColumn]);
     var minimum = String(row[minimumColumn] == null ? "" : row[minimumColumn]).trim();
     var latest = String(row[latestColumn] == null ? "" : row[latestColumn]).trim();
-    if (minimum !== "v1.0.0" || latest !== "v1.0.0") continue;
-
     if (platform === "windows" || platform === "android") {
-      sheet.getRange(rowIndex + 1, latestColumn + 1).setValue("v1.0.1");
+      if (minimum !== "v1.0.0") continue;
+      if (latest !== "v1.0.0" && latest !== "v1.0.1") continue;
+      sheet.getRange(rowIndex + 1, latestColumn + 1).setValue("v1.0.2");
     } else if (platform === "ios") {
-      sheet.getRange(rowIndex + 1, minimumColumn + 1).setValue("v1.0.1");
-      sheet.getRange(rowIndex + 1, latestColumn + 1).setValue("v1.0.1");
+      var isV100Default = minimum === "v1.0.0" && latest === "v1.0.0";
+      var isV101Default = minimum === "v1.0.1" && latest === "v1.0.1";
+      if (!isV100Default && !isV101Default) continue;
+      sheet.getRange(rowIndex + 1, minimumColumn + 1).setValue("v1.0.2");
+      sheet.getRange(rowIndex + 1, latestColumn + 1).setValue("v1.0.2");
     }
   }
 }

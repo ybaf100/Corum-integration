@@ -1,6 +1,6 @@
 # Android build notes
 
-Corum Integration v1.0.1 keeps End Screen capture inside the Geometry Dash
+Corum Integration v1.0.2 keeps End Screen capture inside the Geometry Dash
 Cocos renderer. It does not use Android `MediaProjection`.
 
 ## Local Geode CLI build
@@ -19,7 +19,7 @@ The equivalent long option is `--platform`.
 
 `.github/workflows/build-mod.yml` follows Geode's multi-platform build pattern.
 It builds Win64, iOS arm64, Android32, and Android64 independently and uses
-Geode's combine action to produce one `v1.0.1` package containing all four
+Geode's combine action to produce one `v1.0.2` package containing all four
 platform binaries.
 
 ## Device validation checklist

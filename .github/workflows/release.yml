@@ -71,7 +71,7 @@ jobs:
       - name: Validate final Release assets
         shell: bash
         run: |
-          GEODE="release-assets/Corum-Integration-$RELEASE_VERSION.geode"
+          GEODE="release-assets/hwanhee1.corum_integration.geode"
           INSTALLER="release-assets/Corum-Integration-Installer-$RELEASE_VERSION.exe"
           test -s "$GEODE"
           test -s "$INSTALLER"
@@ -107,12 +107,12 @@ jobs:
             echo "## Release assets"
             echo
             echo "- Corum-Integration-Installer-$RELEASE_VERSION.exe — Windows automatic installer/updater"
-            echo "- Corum-Integration-$RELEASE_VERSION.geode — manual Geode package (Win64, iOS, Android32, Android64)"
+            echo "- hwanhee1.corum_integration.geode — manual Geode package (Win64, iOS, Android32, Android64)"
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Create or update GitHub Release
         shell: bash
         run: |
-          GEODE="release-assets/Corum-Integration-$RELEASE_VERSION.geode"
+          GEODE="release-assets/hwanhee1.corum_integration.geode"
           INSTALLER="release-assets/Corum-Integration-Installer-$RELEASE_VERSION.exe"
           if gh release view "$RELEASE_VERSION" >/dev/null 2>&1; then
             gh release upload "$RELEASE_VERSION" "$INSTALLER" "$GEODE" --clobber

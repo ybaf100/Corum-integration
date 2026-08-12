@@ -16,7 +16,7 @@ internal static class Program
             ("Geometry Dash locator searches additional Steam libraries", TestAdditionalSteamLibraryAsync),
             ("package detection trusts mod.json ID instead of filename", TestPackageDetectionAsync),
             ("package validation distinguishes archive and manifest failures", TestPackageValidationErrorsAsync),
-            ("GitHub Release client selects the exact versioned asset", TestReleaseClientAsync),
+            ("GitHub Release client selects the canonical Mod ID asset", TestReleaseClientAsync),
             ("safe update replaces only matching Mod IDs", TestSafeUpdateAsync),
             ("invalid downloads preserve the installed package", TestInvalidDownloadPreservesInstalledAsync),
             ("running Geometry Dash blocks replacement", TestRunningGamePreservesInstalledAsync),
@@ -143,7 +143,7 @@ internal static class Program
         CreateGeodePackage(wrongVersion, AppConstants.ModId, "v1.0.0");
         ExpectInstallerError(
             InstallerErrorCode.ModVersionMismatch,
-            () => inspector.ValidateCorumPackage(wrongVersion, "v1.0.1"));
+            () => inspector.ValidateCorumPackage(wrongVersion, "v1.0.2"));
         return Task.CompletedTask;
     }
 
@@ -151,22 +151,22 @@ internal static class Program
     {
         using var fixture = new TemporaryFixture();
         var packagePath = Path.Combine(fixture.RootDirectory, "release.geode");
-        CreateGeodePackage(packagePath, AppConstants.ModId, "v1.0.1");
+        CreateGeodePackage(packagePath, AppConstants.ModId, "v1.0.2");
         var packageBytes = File.ReadAllBytes(packagePath);
 
         var json = """
             {
-              "tag_name": "v1.0.1",
-              "html_url": "https://github.com/ybaf100/Corum-integration/releases/tag/v1.0.1",
+              "tag_name": "v1.0.2",
+              "html_url": "https://github.com/ybaf100/Corum-integration/releases/tag/v1.0.2",
               "assets": [
                 {
-                  "name": "Corum-Integration-Installer-v1.0.1.exe",
-                  "browser_download_url": "https://github.com/ybaf100/Corum-integration/releases/download/v1.0.1/installer.exe",
+                  "name": "Corum-Integration-Installer-v1.0.2.exe",
+                  "browser_download_url": "https://github.com/ybaf100/Corum-integration/releases/download/v1.0.2/installer.exe",
                   "size": 100
                 },
                 {
-                  "name": "Corum-Integration-v1.0.1.geode",
-                  "browser_download_url": "https://github.com/ybaf100/Corum-integration/releases/download/v1.0.1/Corum-Integration-v1.0.1.geode",
+                  "name": "hwanhee1.corum_integration.geode",
+                  "browser_download_url": "https://github.com/ybaf100/Corum-integration/releases/download/v1.0.2/hwanhee1.corum_integration.geode",
                   "size": 200
                 }
               ]
@@ -176,8 +176,8 @@ internal static class Program
         using var releaseClient = new GitHubReleaseClient(httpClient);
 
         var release = await releaseClient.GetLatestReleaseAsync();
-        Assert(release.Version == "v1.0.1", "The Release version was not normalized.");
-        Assert(release.Asset.Name == "Corum-Integration-v1.0.1.geode", "The exact versioned .geode asset was not selected.");
+        Assert(release.Version == "v1.0.2", "The Release version was not normalized.");
+        Assert(release.Asset.Name == AppConstants.ReleaseAssetName, "The canonical Mod ID .geode asset was not selected.");
         using var download = await releaseClient.DownloadPackageAsync(release);
         var downloadedMetadata = new GeodePackageInspector().ValidateCorumPackage(download.FilePath, release.Version);
         Assert(downloadedMetadata.Id == AppConstants.ModId, "The Release package download was not preserved as a valid Geode archive.");
@@ -191,14 +191,14 @@ internal static class Program
         CreateGeodePackage(oldPath, AppConstants.ModId, "v0.2.40");
         CreateGeodePackage(otherPath, "example.other_mod", "v3.0.0");
         var otherBytes = File.ReadAllBytes(otherPath);
-        var downloadPath = fixture.CreateDownload(AppConstants.ModId, "v1.0.1");
+        var downloadPath = fixture.CreateDownload(AppConstants.ModId, "v1.0.2");
 
         var result = fixture.CreateInstallationService(gameRunning: false)
-            .InstallOrUpdate(downloadPath, fixture.GeometryDashDirectory, "v1.0.1");
+            .InstallOrUpdate(downloadPath, fixture.GeometryDashDirectory, "v1.0.2");
 
-        Assert(result.InstalledVersion == "v1.0.1", "The new version was not installed.");
+        Assert(result.InstalledVersion == "v1.0.2", "The new version was not installed.");
         Assert(!File.Exists(oldPath), "The old same-ID package was not removed.");
-        Assert(File.Exists(Path.Combine(fixture.ModsDirectory, "Corum-Integration-v1.0.1.geode")), "The canonical package was not created.");
+        Assert(File.Exists(Path.Combine(fixture.ModsDirectory, AppConstants.ReleaseAssetName)), "The canonical package was not created.");
         Assert(File.ReadAllBytes(otherPath).SequenceEqual(otherBytes), "Another Geode mod was changed.");
         Assert(
             !Directory.EnumerateDirectories(Path.GetDirectoryName(fixture.ModsDirectory)!, ".corum-integration-backup-*").Any(),
@@ -212,12 +212,12 @@ internal static class Program
         var oldPath = Path.Combine(fixture.ModsDirectory, "CorumIntegration.geode");
         CreateGeodePackage(oldPath, AppConstants.ModId, "v1.0.0");
         var oldBytes = File.ReadAllBytes(oldPath);
-        var downloadPath = fixture.CreateDownload("wrong.mod_id", "v1.0.1");
+        var downloadPath = fixture.CreateDownload("wrong.mod_id", "v1.0.2");
 
         ExpectInstallerError(
             InstallerErrorCode.ModIdMismatch,
             () => fixture.CreateInstallationService(gameRunning: false)
-                .InstallOrUpdate(downloadPath, fixture.GeometryDashDirectory, "v1.0.1"));
+                .InstallOrUpdate(downloadPath, fixture.GeometryDashDirectory, "v1.0.2"));
         Assert(File.ReadAllBytes(oldPath).SequenceEqual(oldBytes), "The existing package changed before download validation completed.");
         return Task.CompletedTask;
     }
@@ -228,12 +228,12 @@ internal static class Program
         var oldPath = Path.Combine(fixture.ModsDirectory, "CorumIntegration.geode");
         CreateGeodePackage(oldPath, AppConstants.ModId, "v1.0.0");
         var oldBytes = File.ReadAllBytes(oldPath);
-        var downloadPath = fixture.CreateDownload(AppConstants.ModId, "v1.0.1");
+        var downloadPath = fixture.CreateDownload(AppConstants.ModId, "v1.0.2");
 
         ExpectInstallerError(
             InstallerErrorCode.GeometryDashRunning,
             () => fixture.CreateInstallationService(gameRunning: true)
-                .InstallOrUpdate(downloadPath, fixture.GeometryDashDirectory, "v1.0.1"));
+                .InstallOrUpdate(downloadPath, fixture.GeometryDashDirectory, "v1.0.2"));
         Assert(File.ReadAllBytes(oldPath).SequenceEqual(oldBytes), "The installed package changed while Geometry Dash was running.");
         return Task.CompletedTask;
     }
@@ -241,15 +241,15 @@ internal static class Program
     private static Task TestTargetCollisionPreservesOtherModAsync()
     {
         using var fixture = new InstallerFixture();
-        var collisionPath = Path.Combine(fixture.ModsDirectory, "Corum-Integration-v1.0.1.geode");
+        var collisionPath = Path.Combine(fixture.ModsDirectory, AppConstants.ReleaseAssetName);
         CreateGeodePackage(collisionPath, "example.unrelated", "v4.0.0");
         var collisionBytes = File.ReadAllBytes(collisionPath);
-        var downloadPath = fixture.CreateDownload(AppConstants.ModId, "v1.0.1");
+        var downloadPath = fixture.CreateDownload(AppConstants.ModId, "v1.0.2");
 
         ExpectInstallerError(
             InstallerErrorCode.FileCollision,
             () => fixture.CreateInstallationService(gameRunning: false)
-                .InstallOrUpdate(downloadPath, fixture.GeometryDashDirectory, "v1.0.1"));
+                .InstallOrUpdate(downloadPath, fixture.GeometryDashDirectory, "v1.0.2"));
         Assert(File.ReadAllBytes(collisionPath).SequenceEqual(collisionBytes), "A different mod at the destination path was overwritten.");
         return Task.CompletedTask;
     }
