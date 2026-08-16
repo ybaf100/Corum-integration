@@ -68,6 +68,14 @@ jobs:
         with:
           name: Corum-Integration-Installer-${{ env.RELEASE_VERSION }}
           path: release-assets
+      - name: Generate Release notes
+        shell: bash
+        run: |
+          python3 release/generate-release-notes.py \
+            --version "$RELEASE_VERSION" \
+            --changelog corum-integration-mod/changelog.md \
+            --template release/RELEASE-NOTES-TEMPLATE.md \
+            --output release-notes.md
       - name: Validate final Release assets
         shell: bash
         run: |
@@ -114,10 +122,14 @@ jobs:
         run: |
           GEODE="release-assets/hwanhee1.corum_integration.geode"
           INSTALLER="release-assets/Corum-Integration-Installer-$RELEASE_VERSION.exe"
+          NOTES="release-notes.md"
           if gh release view "$RELEASE_VERSION" >/dev/null 2>&1; then
             gh release upload "$RELEASE_VERSION" "$INSTALLER" "$GEODE" --clobber
+            gh release edit "$RELEASE_VERSION" \
+              --title "$RELEASE_VERSION" \
+              --notes-file "$NOTES"
           else
             gh release create "$RELEASE_VERSION" "$INSTALLER" "$GEODE" \
-              --title "Corum Integration $RELEASE_VERSION" \
-              --generate-notes
+              --title "$RELEASE_VERSION" \
+              --notes-file "$NOTES"
           fi
