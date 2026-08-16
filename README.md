@@ -5,11 +5,37 @@
 
 ## 설치 방법은 [가이드](https://app.notion.com/p/Corum-Integration-3b9f6f1f3d05808a9237efd47f49e9ce?source=copy_link)를 참고하세요.
 
-## Windows 설치 방식
 
-GitHub Release에서는 두 가지 설치 방식을 함께 제공합니다.
+## 모드의 주요 기능
+- Geometry Dash에서 Corum List 정보를 확인하고 기록을 직접 제출할 수 있습니다.
 
-- `Corum-Integration-Installer-v1.0.2.exe`: Geometry Dash와 기존 설치본을 찾아 자동으로 설치·업데이트합니다.
-- `hwanhee1.corum_integration.geode`: `<Geometry Dash>/geode/mods/`에 직접 넣는 수동 설치 파일입니다.
+## 세부 정보
+- **Corum 맵 정보**
+  - 레벨 화면에서 Corum 난이도, 현재 순위, 최대 포인트를 표시합니다.
 
-자동 설치기는 Geode 자체를 내장하거나 강제로 설치하지 않습니다. Geode가 없다면 [Geode 공식 설치 페이지](https://geode-sdk.org/install)를 안내합니다.
+- **기록 제출**
+  - 종이비행기 버튼을 통해 현재 최고 기록을 바로 제출할 수 있습니다.
+  - 제출 전 예상 포인트와 기존 확정 포인트를 확인할 수 있습니다.
+
+- **일괄 제출**
+  - 제출 가능한 Corum 기록을 자동으로 찾아 한 번에 제출할 수 있습니다.
+  - 제출 전 대상 맵과 예상 총점을 확인할 수 있습니다.
+
+- **포인트 시스템**
+  - Corum의 포인트 계산식을 게임 내에서도 동일하게 적용합니다.
+  - 기록을 제출한 시점을 기준으로 포인트가 확정됩니다.
+
+- **Geometry Dash 계정 연동**
+  - 별도의 회원가입이나 토큰 입력 없이 현재 Geometry Dash 계정을 사용합니다.
+
+- **자동 동기화**
+  - 게임 시작 시 Corum 맵 목록과 서버 정보를 자동으로 불러옵니다.
+  - 게임 중 불필요한 네트워크 요청을 하지 않습니다.
+  
+## Requirements
+
+- Geometry Dash 2.2081
+- Geode 5.8.2
+- **Node IDs**
+
+---
